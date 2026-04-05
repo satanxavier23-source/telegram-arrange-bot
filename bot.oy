@@ -1,0 +1,27 @@
+import telebot
+import time
+import threading
+import os
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+
+bot = telebot.TeleBot(BOT_TOKEN)
+
+delete_time = 10
+
+@bot.channel_post_handler(content_types=[
+    'text','photo','video','document','audio',
+    'voice','sticker','animation'
+])
+def auto_delete(message):
+
+    def delete():
+        time.sleep(delete_time)
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except:
+            pass
+
+    threading.Thread(target=delete).start()
+
+bot.infinity_polling()
