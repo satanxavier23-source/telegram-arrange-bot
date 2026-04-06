@@ -21,7 +21,13 @@ async def clean_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [f"VIDEO {i+1} ⤵️\n{link}" for i, link in enumerate(links)]
     )
 
-    await update.message.reply_text(message)
+    # if photo exists
+    if update.message.photo:
+        photo = update.message.photo[-1].file_id
+        await update.message.reply_photo(photo=photo, caption=message)
+    else:
+        await update.message.reply_text(message)
+
 
 app = ApplicationBuilder().token(TOKEN).build()
 
