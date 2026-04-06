@@ -1,6 +1,7 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 import os
+import re
 
 TOKEN = os.getenv("TOKEN")
 
@@ -12,19 +13,22 @@ async def clean_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.message.caption:
         text = update.message.caption
 
-    links = [line.strip() for line in text.splitlines() if line.strip().startswith("http")]
+    # find all links
+    links = re.findall(r'https?://\S+', text)
 
     if not links:
         return
 
-    message = "FULL VIDEO 👀🌸\n\n" + "\n\n".join(
-        [f"VIDEO {i+1} ⤵️\n{link}" for i, link in enumerate(links)]
-    )
+    message = "FULL VIDEO 👀🌸\n\n"
 
-    # if photo exists
+    for i, link in enumerate(links, 1):
+        message += f"VIDEO {i} ⤵️\n{link}\n\n"
+
+    # photo case
     if update.message.photo:
         photo = update.message.photo[-1].file_id
         await update.message.reply_photo(photo=photo, caption=message)
+
     else:
         await update.message.reply_text(message)
 
