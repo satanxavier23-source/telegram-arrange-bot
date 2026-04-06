@@ -1,27 +1,24 @@
-import telebot
-import time
-import threading
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 import os
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+TOKEN = os.getenv("TOKEN")
 
-bot = telebot.TeleBot(BOT_TOKEN)
+async def clean_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    links = [line.strip() for line in text.splitlines() if line.strip().startswith("http")]
 
-delete_time = 10
+    if not links:
+        await update.message.reply_text("No links found ❌")
+        return
 
-@bot.channel_post_handler(content_types=[
-    'text','photo','video','document','audio',
-    'voice','sticker','animation'
-])
-def auto_delete(message):
+    message = "FULL VIDEO 👀🌸\n\n" + "\n\n".join(
+        [f"VIDEO {i+1} ⤵️\n{link}" for i, link in enumerate(links)]
+    )
 
-    def delete():
-        time.sleep(delete_time)
-        try:
-            bot.delete_message(message.chat.id, message.message_id)
-        except:
-            pass
+    await update.message.reply_text(message)
 
-    threading.Thread(target=delete).start()
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, clean_links))
 
-bot.infinity_polling()
+app.run_polling()
