@@ -5,11 +5,16 @@ import os
 TOKEN = os.getenv("TOKEN")
 
 async def clean_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    text = ""
+
+    if update.message.text:
+        text = update.message.text
+    elif update.message.caption:
+        text = update.message.caption
+
     links = [line.strip() for line in text.splitlines() if line.strip().startswith("http")]
 
     if not links:
-        await update.message.reply_text("No links found ❌")
         return
 
     message = "FULL VIDEO 👀🌸\n\n" + "\n\n".join(
@@ -19,6 +24,7 @@ async def clean_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message)
 
 app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, clean_links))
+
+app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, clean_links))
 
 app.run_polling()
