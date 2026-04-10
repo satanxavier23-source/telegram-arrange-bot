@@ -7,7 +7,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-ADMIN_ID = 123456789  # 👈 നിന്റെ user id ഇടണം
+ADMIN_ID = 6630347046  # 👈 നിന്റെ user id ഇടണം
 
 replace_photo = None
 replace_mode = False
