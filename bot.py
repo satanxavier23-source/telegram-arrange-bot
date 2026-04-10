@@ -1,103 +1,53 @@
 import os
 import re
 import telebot
-from telebot import types
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
-    print("Token ഇല്ല ❌")
-    exit()
+    print("ERROR: BOT_TOKEN not found")
+    raise SystemExit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
-
-replace_photo = None
-replace_mode = False
-waiting_photo = False
-
 
 def extract_links(text):
     if not text:
         return []
-    return re.findall(r'https?://\S+', text)
-
-
-def keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("Set Photo")
-    markup.row("ON", "OFF")
-    markup.row("Status")
-    return markup
-
+    return re.findall(r'https?://[^\s]+', text)
 
 @bot.message_handler(commands=['start'])
-def start(msg):
-    bot.reply_to(msg, "Bot ready ✅", reply_markup=keyboard())
-
-
-@bot.message_handler(func=lambda m: m.text == "Set Photo")
-def set_photo(msg):
-    global waiting_photo
-    waiting_photo = True
-    bot.reply_to(msg, "Photo അയക്കൂ 📸")
-
-
-@bot.message_handler(func=lambda m: m.text == "ON")
-def turn_on(msg):
-    global replace_mode
-
-    if not replace_photo:
-        bot.reply_to(msg, "Photo set ചെയ്തിട്ടില്ല ❌")
-        return
-
-    replace_mode = True
-    bot.reply_to(msg, "ON ആയി ✅")
-
-
-@bot.message_handler(func=lambda m: m.text == "OFF")
-def turn_off(msg):
-    global replace_mode
-    replace_mode = False
-    bot.reply_to(msg, "OFF ആയി ❌")
-
-
-@bot.message_handler(func=lambda m: m.text == "Status")
-def status(msg):
-    mode = "ON" if replace_mode else "OFF"
-    bot.reply_to(msg, f"Mode: {mode}")
-
+def start_handler(message):
+    bot.reply_to(
+        message,
+        "Photo + text + links ഒറ്റ message ആയി അയക്കൂ.\nഞാൻ text remove ചെയ്ത് links arrange ചെയ്ത് photo-യോടൊപ്പം തിരിച്ച് അയക്കും ✅"
+    )
 
 @bot.message_handler(content_types=['photo'])
-def photo_handler(msg):
-    global replace_photo, waiting_photo
+def photo_handler(message):
+    try:
+        photo_id = message.photo[-1].file_id
+        caption = message.caption or ""
 
-    # 👉 Set Photo mode
-    if waiting_photo:
-        replace_photo = msg.photo[-1].file_id
-        waiting_photo = False
-        bot.reply_to(msg, "Saved ✅")
-        return
+        links = extract_links(caption)
 
-    caption = msg.caption or ""
-    links = extract_links(caption)
+        if not links:
+            bot.reply_to(message, "Caption-ിൽ valid links ഇല്ല ❌")
+            return
 
-    if not links:
-        bot.reply_to(msg, "Links ഇല്ല ❌")
-        return
+        result = "FULL VIDEO 👀🌸\n\n"
+        for i, link in enumerate(links, start=1):
+            result += f"VIDEO {i} ⤵️\n{link}\n\n"
 
-    # 👉 Arrange links
-    result = "FULL VIDEO 👀🌸\n\n"
-    for i, link in enumerate(links, 1):
-        result += f"VIDEO {i} ⤵️\n{link}\n\n"
+        # photo + arranged links together
+        bot.send_photo(
+            chat_id=message.chat.id,
+            photo=photo_id,
+            caption=result
+        )
 
-    # 👉 Choose photo
-    if replace_mode and replace_photo:
-        photo_id = replace_photo
-    else:
-        photo_id = msg.photo[-1].file_id
-
-    bot.send_photo(msg.chat.id, photo_id, caption=result)
-
+    except Exception as e:
+        print("ERROR:", e)
+        bot.reply_to(message, "Error വന്നു ❌")
 
 print("Bot running...")
-bot.infinity_polling(skip_pending=True)
+bot.infinity_polling(skip_pending=True, none_stop=True)
