@@ -9,67 +9,41 @@ if not BOT_TOKEN:
     raise SystemExit(1)
 
 bot = telebot.TeleBot(BOT_TOKEN)
-user_data = {}
 
-def extract_links(text: str):
+def extract_links(text):
     if not text:
         return []
-    return re.findall(r'https?://\S+', text)
+    return re.findall(r'https?://[^\s]+', text)
 
 @bot.message_handler(commands=['start'])
 def start_handler(message):
-    bot.reply_to(message, "Bot working ✅\nആദ്യം photo അയക്കൂ 📸")
+    bot.reply_to(
+        message,
+        "Send photo with text + links.\nഞാൻ text remove ചെയ്ത് links arrange ചെയ്ത് തിരിച്ച് അയക്കും ✅"
+    )
 
 @bot.message_handler(content_types=['photo'])
 def photo_handler(message):
-    user_id = message.from_user.id
-
-    user_data[user_id] = {
-        "photo": message.photo[-1].file_id,
-        "links": []
-    }
-
-    bot.reply_to(message, "ഇപ്പോൾ links അയക്കൂ 🔗")
-
-@bot.message_handler(content_types=['text'])
-def text_handler(message):
-    user_id = message.from_user.id
-    text = message.text or ""
-
-    if text.startswith("/start"):
-        return
-
-    if user_id not in user_data:
-        bot.reply_to(message, "ആദ്യം photo അയക്കൂ 📸")
-        return
-
-    links = extract_links(text)
-
-    if not links:
-        bot.reply_to(message, "Valid links അയക്കൂ 🔗")
-        return
-
-    user_data[user_id]["links"].extend(links)
-    send_result(message.chat.id, user_id)
-
-def send_result(chat_id, user_id):
-    data = user_data.get(user_id)
-
-    if not data or not data["links"]:
-        return
-
-    result = "FULL VIDEO 👀🌸\n\n"
-
-    for i, link in enumerate(data["links"], start=1):
-        result += f"VIDEO {i} ⤵️\n{link}\n\n"
-
     try:
-        bot.send_photo(chat_id, data["photo"])
-        bot.send_message(chat_id, result)
-    except Exception as e:
-        print("SEND ERROR:", e)
+        photo_id = message.photo[-1].file_id
+        caption = message.caption or ""
 
-    user_data.pop(user_id, None)
+        links = extract_links(caption)
+
+        if not links:
+            bot.reply_to(message, "Caption-ിൽ valid links ഇല്ല ❌")
+            return
+
+        result = "FULL VIDEO 👀🌸\n\n"
+        for i, link in enumerate(links, start=1):
+            result += f"VIDEO {i} ⤵️\n{link}\n\n"
+
+        bot.send_photo(message.chat.id, photo_id)
+        bot.send_message(message.chat.id, result)
+
+    except Exception as e:
+        print("ERROR:", e)
+        bot.reply_to(message, "Error വന്നു ❌")
 
 print("Bot running...")
 bot.infinity_polling(skip_pending=True, none_stop=True)
