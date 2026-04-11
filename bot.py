@@ -11,7 +11,7 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ====== STORAGE ======
+# ===== STORAGE =====
 replace_photo = None
 waiting_photo = False
 
@@ -21,14 +21,14 @@ forward_mode = False
 
 selected_channels = set()
 
-# ====== CHANNEL IDs ======
+# ===== CHANNEL IDS =====
 CHANNELS = {
     "Channel 1": -1002674664027,
     "Channel 2": -1002514181198,
     "Channel 3": -1002427180742
 }
 
-# ====== FUNCTIONS ======
+# ===== FUNCTIONS =====
 def extract_links(text):
     if not text:
         return []
@@ -42,180 +42,107 @@ def arrange_links(text):
     result = "FULL VIDEO 👀🌸\n\n"
     for i, link in enumerate(links, 1):
         result += f"VIDEO {i} ⤵️\n{link}\n\n"
+
     return result.strip()
 
-def main_inline_keyboard():
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("📸 Set Photo", callback_data="set_photo")
-    )
-    markup.add(
-        types.InlineKeyboardButton("🟢 Thumb ON", callback_data="thumb_on"),
-        types.InlineKeyboardButton("🔴 Thumb OFF", callback_data="thumb_off")
-    )
-    markup.add(
-        types.InlineKeyboardButton("🟢 Link ON", callback_data="link_on"),
-        types.InlineKeyboardButton("🔴 Link OFF", callback_data="link_off")
-    )
-    markup.add(
-        types.InlineKeyboardButton("🟢 Forward ON", callback_data="forward_on"),
-        types.InlineKeyboardButton("🔴 Forward OFF", callback_data="forward_off")
-    )
-    markup.add(
-        types.InlineKeyboardButton("📢 Select Channels", callback_data="select_channels")
-    )
-    markup.add(
-        types.InlineKeyboardButton("📊 Status", callback_data="status")
-    )
+# ===== KEYBOARDS =====
+def main_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("Set Photo")
+    markup.row("Thumb ON", "Thumb OFF")
+    markup.row("Link ON", "Link OFF")
+    markup.row("Forward ON", "Forward OFF")
+    markup.row("Select Channels")
+    markup.row("Status")
     return markup
 
-def channel_inline_keyboard():
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("Channel 1", callback_data="ch_1"),
-        types.InlineKeyboardButton("Channel 2", callback_data="ch_2")
-    )
-    markup.add(
-        types.InlineKeyboardButton("Channel 3", callback_data="ch_3")
-    )
-    markup.add(
-        types.InlineKeyboardButton("🗑 Clear Channels", callback_data="clear_channels")
-    )
-    markup.add(
-        types.InlineKeyboardButton("⬅ Back", callback_data="back_main")
-    )
+def channel_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("Channel 1", "Channel 2")
+    markup.row("Channel 3")
+    markup.row("Clear Channels")
+    markup.row("Back")
     return markup
 
-def get_status_text():
+def get_status():
     return (
-        f"📊 Bot Status\n\n"
+        f"📊 Status\n\n"
         f"Thumb: {'ON ✅' if thumb_mode else 'OFF ❌'}\n"
-        f"Link Arrange: {'ON ✅' if link_mode else 'OFF ❌'}\n"
-        f"Auto Forward: {'ON ✅' if forward_mode else 'OFF ❌'}\n"
-        f"Saved Photo: {'Yes ✅' if replace_photo else 'No ❌'}\n"
-        f"Selected Channels: {len(selected_channels)}"
+        f"Link: {'ON ✅' if link_mode else 'OFF ❌'}\n"
+        f"Forward: {'ON ✅' if forward_mode else 'OFF ❌'}\n"
+        f"Photo: {'Saved ✅' if replace_photo else 'Not Saved ❌'}\n"
+        f"Channels: {len(selected_channels)}"
     )
 
-# ====== START ======
+# ===== START =====
 @bot.message_handler(commands=['start'])
 def start(msg):
-    bot.send_message(
-        msg.chat.id,
-        "🔥 Inline UI Bot Ready 🔥\n\n"
-        "താഴെയുള്ള buttons use ചെയ്യൂ.",
-        reply_markup=main_inline_keyboard()
-    )
+    bot.send_message(msg.chat.id, "🔥 Bot Ready 🔥", reply_markup=main_keyboard())
 
-# ====== CALLBACK HANDLER ======
-@bot.callback_query_handler(func=lambda call: True)
-def callback_handler(call):
-    global waiting_photo, thumb_mode, link_mode, forward_mode
+# ===== BUTTON HANDLERS =====
+@bot.message_handler(func=lambda m: m.text == "Set Photo")
+def set_photo(msg):
+    global waiting_photo
+    waiting_photo = True
+    bot.reply_to(msg, "Photo അയക്കൂ 📸")
 
-    data = call.data
-
-    if data == "set_photo":
-        waiting_photo = True
-        bot.answer_callback_query(call.id, "Photo അയക്കൂ 📸")
-        bot.send_message(call.message.chat.id, "Replacement photo അയക്കൂ 📸")
+@bot.message_handler(func=lambda m: m.text == "Thumb ON")
+def thumb_on(msg):
+    global thumb_mode
+    if not replace_photo:
+        bot.reply_to(msg, "Photo set ചെയ്തിട്ടില്ല ❌")
         return
+    thumb_mode = True
+    bot.reply_to(msg, "Thumb ON 🔥")
 
-    elif data == "thumb_on":
-        if not replace_photo:
-            bot.answer_callback_query(call.id, "Photo set ചെയ്തിട്ടില്ല ❌")
-            return
-        thumb_mode = True
-        bot.answer_callback_query(call.id, "Thumb ON ✅")
+@bot.message_handler(func=lambda m: m.text == "Thumb OFF")
+def thumb_off(msg):
+    global thumb_mode
+    thumb_mode = False
+    bot.reply_to(msg, "Thumb OFF ❌")
 
-    elif data == "thumb_off":
-        thumb_mode = False
-        bot.answer_callback_query(call.id, "Thumb OFF ❌")
+@bot.message_handler(func=lambda m: m.text == "Link ON")
+def link_on(msg):
+    global link_mode
+    link_mode = True
+    bot.reply_to(msg, "Link ON ✅")
 
-    elif data == "link_on":
-        link_mode = True
-        bot.answer_callback_query(call.id, "Link Arrange ON ✅")
+@bot.message_handler(func=lambda m: m.text == "Link OFF")
+def link_off(msg):
+    global link_mode
+    link_mode = False
+    bot.reply_to(msg, "Link OFF ❌")
 
-    elif data == "link_off":
-        link_mode = False
-        bot.answer_callback_query(call.id, "Link Arrange OFF ❌")
+@bot.message_handler(func=lambda m: m.text == "Forward ON")
+def forward_on(msg):
+    global forward_mode
+    forward_mode = True
+    bot.reply_to(msg, "Forward ON 🚀")
 
-    elif data == "forward_on":
-        forward_mode = True
-        bot.answer_callback_query(call.id, "Auto Forward ON 🚀")
+@bot.message_handler(func=lambda m: m.text == "Forward OFF")
+def forward_off(msg):
+    global forward_mode
+    forward_mode = False
+    bot.reply_to(msg, "Forward OFF ❌")
 
-    elif data == "forward_off":
-        forward_mode = False
-        bot.answer_callback_query(call.id, "Auto Forward OFF ❌")
+@bot.message_handler(func=lambda m: m.text == "Select Channels")
+def select_channels(msg):
+    bot.send_message(msg.chat.id, "Channels select ചെയ്യൂ", reply_markup=channel_keyboard())
 
-    elif data == "select_channels":
-        bot.edit_message_text(
-            "📢 Channels select ചെയ്യൂ",
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=channel_inline_keyboard()
-        )
-        return
+@bot.message_handler(func=lambda m: m.text in ["Channel 1", "Channel 2", "Channel 3"])
+def add_channel(msg):
+    selected_channels.add(CHANNELS[msg.text])
+    bot.reply_to(msg, f"{msg.text} added ✅")
 
-    elif data == "status":
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, get_status_text(), reply_markup=main_inline_keyboard())
-        return
+@bot.message_handler(func=lambda m: m.text == "Clear Channels")
+def clear_channels(msg):
+    selected_channels.clear()
+    bot.reply_to(msg, "Channels cleared ❌")
 
-    elif data == "ch_1":
-        selected_channels.add(CHANNELS["Channel 1"])
-        bot.answer_callback_query(call.id, "Channel 1 added ✅")
+@bot.message_handler(func=lambda m: m.text == "Back")
+def back(msg):
+    bot.send_message(msg.chat.id, "Main Menu 🔥", reply_markup=main_keyboard())
 
-    elif data == "ch_2":
-        selected_channels.add(CHANNELS["Channel 2"])
-        bot.answer_callback_query(call.id, "Channel 2 added ✅")
-
-    elif data == "ch_3":
-        selected_channels.add(CHANNELS["Channel 3"])
-        bot.answer_callback_query(call.id, "Channel 3 added ✅")
-
-    elif data == "clear_channels":
-        selected_channels.clear()
-        bot.answer_callback_query(call.id, "Channels cleared ❌")
-
-    elif data == "back_main":
-        bot.edit_message_text(
-            "🔥 Main Menu 🔥",
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=main_inline_keyboard()
-        )
-        return
-
-# ====== PHOTO HANDLER ======
-@bot.message_handler(content_types=['photo'])
-def photo_handler(msg):
-    global replace_photo, waiting_photo
-
-    if waiting_photo:
-        replace_photo = msg.photo[-1].file_id
-        waiting_photo = False
-        bot.reply_to(msg, "Photo saved ✅", reply_markup=main_inline_keyboard())
-        return
-
-    caption = msg.caption or ""
-
-    if thumb_mode and replace_photo:
-        photo_id = replace_photo
-    else:
-        photo_id = msg.photo[-1].file_id
-
-    if link_mode:
-        final_caption = arrange_links(caption) or "Links ഇല്ല ❌"
-    else:
-        final_caption = caption
-
-    bot.send_photo(msg.chat.id, photo_id, caption=final_caption)
-
-    if forward_mode and selected_channels:
-        for ch in selected_channels:
-            try:
-                bot.send_photo(ch, photo_id, caption=final_caption)
-            except Exception as e:
-                print("Forward error:", e)
-
-print("Bot running 🔥")
-bot.infinity_polling(skip_pending=True)
+@bot.message_handler(func=lambda m: m.text == "Status")
+def status(msg):
+    bot.reply_to(msg, get_status())
