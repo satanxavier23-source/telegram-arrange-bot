@@ -1,5 +1,7 @@
 import os
 import re
+import time
+import threading
 import telebot
 from telebot import types
 
@@ -7,7 +9,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not set")
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
 
 # =========================
 # ADMINS
@@ -30,6 +32,8 @@ PHOTO_SLOTS = ["Photo 1", "Photo 2", "Photo 3", "Photo 4", "Photo 5"]
 # STORAGE
 # =========================
 user_settings = {}
+user_temp = {}
+user_locks = {}
 
 
 # =========================
@@ -37,6 +41,12 @@ user_settings = {}
 # =========================
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
+
+
+def get_lock(uid: int):
+    if uid not in user_locks:
+        user_locks[uid] = threading.Lock()
+    return user_locks[uid]
 
 
 def init_user(uid: int) -> None:
@@ -54,8 +64,15 @@ def init_user(uid: int) -> None:
                 "Photo 5": None,
             },
             "selected_photo": None,
-            "photo_action": None,   # "set" or "use"
+            "photo_action": None,         # "set" or "use"
             "waiting_photo_slot": None,
+        }
+
+    if uid not in user_temp:
+        user_temp[uid] = {
+            "current_photo": None,        # latest incoming photo for combine mode
+            "links": [],
+            "timer": 0,
         }
 
 
@@ -75,9 +92,15 @@ def extract_links(text: str) -> list[str]:
 
 
 def build_arranged_text(links: list[str]) -> str:
+    unique = []
+    for link in links:
+        if link not in unique:
+            unique.append(link)
+
     final_text = "FULL VIDEO 👀🌸\n\n"
-    for i, link in enumerate(links, start=1):
+    for i, link in enumerate(unique, start=1):
         final_text += f"VIDEO {i} ⤵️\n{link}\n\n"
+
     return final_text.strip()
 
 
@@ -95,6 +118,12 @@ def selected_thumb_file_id(uid: int):
     if not slot:
         return None
     return user_settings[uid]["saved_photos"].get(slot)
+
+
+def reset_temp(uid: int):
+    user_temp[uid]["current_photo"] = None
+    user_temp[uid]["links"] = []
+    user_temp[uid]["timer"] = 0
 
 
 # =========================
@@ -160,6 +189,7 @@ def start(message):
         "✅ Link arrange\n"
         "✅ Thumbnail change\n"
         "✅ Auto forward\n"
+        "✅ Multi-message combine\n"
         "✅ Photo 1 to Photo 5 support\n\n"
         "Buttons use ചെയ്യൂ 👇",
         reply_markup=main_kb()
@@ -181,10 +211,11 @@ def help_menu(message):
         "4. 🖼 Thumb Change → Thumb ON ആക്കൂ\n"
         "5. 📢 Select Channel → channels select ചെയ്യൂ\n"
         "6. 🟢 Auto Forward ON ആക്കൂ\n\n"
-        "ഇനി text + links അല്ലെങ്കിൽ photo + links അയച്ചാൽ:\n"
-        "• links arrange ചെയ്യും\n"
-        "• Thumb ON ആണെങ്കിൽ selected photo use ചെയ്യും\n"
-        "• selected channelsലേക്കും പോവും",
+        "ഇനി നീ:\n"
+        "• ഒരു photo അയക്കാം\n"
+        "• പിന്നെ 2, 3, 4 text messages ആയി links അയക്കാം\n\n"
+        "Bot 4 sec wait ചെയ്ത് എല്ലാം combine ചെയ്യും.\n"
+        "Thumb ON ആണെങ്കിൽ selected photo use ചെയ്യും.",
         reply_markup=main_kb()
     )
 
@@ -212,7 +243,7 @@ def back_btn(message):
 
 
 # =========================
-# SETTINGS / STATUS
+# STATUS
 # =========================
 @bot.message_handler(func=lambda m: m.text == "📊 Current Settings")
 def current_settings(message):
@@ -324,6 +355,7 @@ def arrange_off(message):
 
     init_user(uid)
     user_settings[uid]["arrange_mode"] = False
+    reset_temp(uid)
     bot.send_message(message.chat.id, "Arrange OFF ❌", reply_markup=arrange_kb())
 
 
@@ -536,6 +568,75 @@ def auto_forward_off(message):
 
 
 # =========================
+# COMBINE / SEND
+# =========================
+def schedule_send(uid: int, chat_id: int):
+    user_temp[uid]["timer"] += 1
+    current_timer = user_temp[uid]["timer"]
+
+    threading.Thread(
+        target=delayed_send,
+        args=(uid, chat_id, current_timer),
+        daemon=True
+    ).start()
+
+
+def delayed_send(uid: int, chat_id: int, timer_id: int):
+    time.sleep(4)
+
+    if uid not in user_temp:
+        return
+
+    with get_lock(uid):
+        if timer_id != user_temp[uid]["timer"]:
+            return
+
+        links = user_temp[uid]["links"]
+        photo_id = user_temp[uid]["current_photo"]
+
+        if not links:
+            return
+
+        final_text = build_arranged_text(links)
+
+        # thumb mode
+        send_photo_id = photo_id
+        if user_settings[uid]["thumb_mode"]:
+            chosen = selected_thumb_file_id(uid)
+            if chosen:
+                send_photo_id = chosen
+
+        try:
+            if send_photo_id:
+                bot.send_photo(
+                    chat_id,
+                    send_photo_id,
+                    caption=final_text[:1024],
+                    reply_markup=main_kb()
+                )
+            else:
+                bot.send_message(
+                    chat_id,
+                    final_text,
+                    reply_markup=main_kb()
+                )
+        except Exception as e:
+            print("Send error:", e)
+
+        if user_settings[uid]["auto_forward"]:
+            for ch in user_settings[uid]["selected_channels"]:
+                try:
+                    if send_photo_id:
+                        bot.send_photo(ch, send_photo_id, caption=final_text[:1024])
+                    else:
+                        bot.send_message(ch, final_text)
+                except Exception as e:
+                    print(f"Forward error to {ch}: {e}")
+
+        reset_temp(uid)
+
+
+# =========================
 # TEXT HANDLER
 # =========================
 @bot.message_handler(content_types=["text"])
@@ -568,20 +669,10 @@ def text_handler(message):
     if not links:
         return
 
-    final_text = build_arranged_text(links)
+    with get_lock(uid):
+        user_temp[uid]["links"].extend([l for l in links if l not in user_temp[uid]["links"]])
 
-    bot.send_message(
-        message.chat.id,
-        final_text,
-        reply_markup=main_kb()
-    )
-
-    if user_settings[uid]["auto_forward"]:
-        for ch in user_settings[uid]["selected_channels"]:
-            try:
-                bot.send_message(ch, final_text)
-            except Exception as e:
-                print("Forward text error:", e)
+    schedule_send(uid, message.chat.id)
 
 
 # =========================
@@ -617,30 +708,14 @@ def photo_handler(message):
         return
 
     links = extract_links(caption)
-    if not links:
-        return
 
-    final_caption = build_arranged_text(links)
-    send_photo_id = photo_id
+    with get_lock(uid):
+        user_temp[uid]["current_photo"] = photo_id
+        if links:
+            user_temp[uid]["links"].extend([l for l in links if l not in user_temp[uid]["links"]])
 
-    if user_settings[uid]["thumb_mode"]:
-        chosen = selected_thumb_file_id(uid)
-        if chosen:
-            send_photo_id = chosen
-
-    bot.send_photo(
-        message.chat.id,
-        send_photo_id,
-        caption=final_caption[:1024],
-        reply_markup=main_kb()
-    )
-
-    if user_settings[uid]["auto_forward"]:
-        for ch in user_settings[uid]["selected_channels"]:
-            try:
-                bot.send_photo(ch, send_photo_id, caption=final_caption[:1024])
-            except Exception as e:
-                print("Forward photo error:", e)
+    # photo മാത്രം ആദ്യം അയച്ചാലും wait ചെയ്യും
+    schedule_send(uid, message.chat.id)
 
 
 print("Bot running...")
