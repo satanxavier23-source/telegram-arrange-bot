@@ -23,116 +23,87 @@ THUMB_SLOTS = ["Photo 1", "Photo 2", "Photo 3", "Photo 4"]
 user_data = {}
 
 
-def is_admin(user_id):
-    return user_id in ADMIN_IDS
+def is_admin(uid):
+    return uid in ADMIN_IDS
 
 
 def init_user(uid):
     if uid not in user_data:
         user_data[uid] = {
-            "waiting_thumb_slot": None,
             "thumb_mode": False,
-            "selected_thumb_slot": None,
-            "saved_thumbs": {
-                "Photo 1": None,
-                "Photo 2": None,
-                "Photo 3": None,
-                "Photo 4": None,
-            },
             "arrange_mode": False,
             "text_edit_mode": False,
             "auto_forward": False,
             "selected_channels": [],
-            "thumb_action": None
+            "selected_thumb": None,
+            "waiting_thumb": None,
+            "thumb_action": None,
+            "thumbs": {s: None for s in THUMB_SLOTS}
         }
 
 
 def extract_links(text):
-    if not text:
-        return []
-
-    matches = re.findall(r'https?://[^\s]+', text)
-    cleaned = []
-
-    for link in matches:
-        link = link.strip().rstrip("),.?!;:'\"")
-        if link not in cleaned:
-            cleaned.append(link)
-
-    return cleaned
+    return re.findall(r'https?://\S+', text or "")
 
 
-def build_arranged_caption(text):
-    if not text:
-        return ""
-
-    links = extract_links(text)
-    if not links:
-        return text[:1024]
-
-    final_text = "FULL VIDEO 👀🌸\n\n"
-    for i, link in enumerate(links, start=1):
-        final_text += f"VIDEO {i} ⤵️\n{link}\n\n"
-
-    return final_text[:1024]
+def build_links(links):
+    txt = "FULL VIDEO 👀🌸\n\n"
+    for i, l in enumerate(links, 1):
+        txt += f"VIDEO {i} ⤵️\n{l}\n\n"
+    return txt.strip()
 
 
-def extract_malayalam_lines(text):
-    if not text:
-        return []
-
+def extract_malayalam(text):
     lines = text.splitlines()
     result = []
 
-    for line in lines:
-        line = line.strip()
-        if not line:
+    for l in lines:
+        l = l.strip()
+        if not l:
             continue
 
-        if re.search(r'https?://\S+', line):
+        if re.search(r'https?://', l):
             continue
 
-        if re.search(r'[\u0D00-\u0D7F]', line):
-            result.append(line)
+        if re.search(r'[\u0D00-\u0D7F]', l):
+            result.append(l)
+
+    # footer remove
+    if len(result) > 2:
+        result = result[:-2]
+    elif len(result) > 1:
+        result = result[:-1]
 
     return result
 
 
-def build_text_edit_caption(text):
-    if not text:
-        return ""
-
-    mal_lines = extract_malayalam_lines(text)
+def text_edit(text):
+    mal = extract_malayalam(text)
     links = extract_links(text)
 
-    final_parts = []
+    final = ""
 
-    if mal_lines:
-        final_parts.append("\n".join(mal_lines))
+    if mal:
+        final += "\n".join(mal) + "\n\n"
 
     if links:
-        link_block = []
-        for i, link in enumerate(links, start=1):
-            link_block.append(f"VIDEO {i} ⤵️\n{link}")
-        final_parts.append("\n\n".join(link_block))
+        final += build_links(links)
 
-    final_text = "\n\n".join(final_parts).strip()
-    return final_text[:1024]
+    return final[:1024]
 
 
-def selected_channel_names(uid):
-    names = []
-    for name, cid in CHANNELS.items():
-        if cid in user_data[uid]["selected_channels"]:
-            names.append(name)
-    return names
+def arrange(text):
+    links = extract_links(text)
+    if not links:
+        return (text or "")[:1024]
+    return build_links(links)[:1024]
 
 
-def get_selected_thumb(uid):
-    slot = user_data[uid]["selected_thumb_slot"]
+def get_thumb(uid):
+    slot = user_data[uid]["selected_thumb"]
     if not slot:
         return None
-    return user_data[uid]["saved_thumbs"].get(slot)
+    return user_data[uid]["thumbs"][slot]
 
 
 def main_kb():
@@ -143,7 +114,7 @@ def main_kb():
     kb.row("📝 Text Edit ON", "❎ Text Edit OFF")
     kb.row("📢 Select Channel")
     kb.row("🟢 Auto Forward ON", "🔴 Auto Forward OFF")
-    kb.row("👁 Current Thumb", "📊 Current Settings")
+    kb.row("📊 Current Settings")
     return kb
 
 
@@ -165,331 +136,248 @@ def channel_kb():
 
 
 @bot.message_handler(commands=["start"])
-def start(message):
-    uid = message.from_user.id
+def start(m):
+    uid = m.from_user.id
     if not is_admin(uid):
-        bot.reply_to(message, "❌ Admin only bot")
         return
 
     init_user(uid)
-    bot.send_message(
-        message.chat.id,
-        "🔥 Multi Thumb + Arrange + Text Edit Bot Ready ✅\n\n"
-        "Functions:\n"
-        "• Thumb Change = photo replace\n"
-        "• Arrange Link = links arrange\n"
-        "• Text Edit = Malayalam text മാത്രം keep + English remove + links arrange\n"
-        "• Auto Forward support\n\n"
-        "Buttons use ചെയ്യൂ 👇",
-        reply_markup=main_kb()
-    )
+    bot.send_message(m.chat.id, "🔥 FINAL BOT READY", reply_markup=main_kb())
 
 
 @bot.message_handler(func=lambda m: m.text == "📸 Set Thumb")
-def set_thumb_menu(message):
-    uid = message.from_user.id
+def set_thumb(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
     user_data[uid]["thumb_action"] = "set"
-    bot.send_message(message.chat.id, "Save ചെയ്യാൻ slot select ചെയ്യൂ", reply_markup=slot_kb())
+    bot.send_message(m.chat.id, "Select slot", reply_markup=slot_kb())
 
 
 @bot.message_handler(func=lambda m: m.text == "✅ Use Thumb")
-def use_thumb_menu(message):
-    uid = message.from_user.id
+def use_thumb(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
     user_data[uid]["thumb_action"] = "use"
-    bot.send_message(message.chat.id, "Use ചെയ്യാൻ slot select ചെയ്യൂ", reply_markup=slot_kb())
+    bot.send_message(m.chat.id, "Select slot", reply_markup=slot_kb())
 
 
 @bot.message_handler(func=lambda m: m.text in THUMB_SLOTS)
-def thumb_slot_handler(message):
-    uid = message.from_user.id
+def thumb_slot(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
-    slot = message.text
-    action = user_data[uid]["thumb_action"]
 
-    if action == "set":
-        user_data[uid]["waiting_thumb_slot"] = slot
-        bot.send_message(message.chat.id, f"{slot} ലേക്ക് save ചെയ്യാൻ ഇപ്പോൾ photo അയക്കൂ 📸", reply_markup=slot_kb())
-        return
+    if user_data[uid]["thumb_action"] == "set":
+        user_data[uid]["waiting_thumb"] = m.text
+        bot.send_message(m.chat.id, "Send photo now 📸", reply_markup=slot_kb())
 
-    if action == "use":
-        thumb = user_data[uid]["saved_thumbs"].get(slot)
-        if not thumb:
-            bot.send_message(message.chat.id, f"{slot} il thumb ഇല്ല ❌", reply_markup=slot_kb())
-            return
-
-        user_data[uid]["selected_thumb_slot"] = slot
-        user_data[uid]["thumb_action"] = None
-        bot.send_photo(
-            message.chat.id,
-            thumb,
-            caption=f"{slot} selected ✅",
-            reply_markup=main_kb()
-        )
-        return
+    elif user_data[uid]["thumb_action"] == "use":
+        if user_data[uid]["thumbs"][m.text]:
+            user_data[uid]["selected_thumb"] = m.text
+            bot.send_message(m.chat.id, f"{m.text} selected ✅", reply_markup=main_kb())
+        else:
+            bot.send_message(m.chat.id, f"{m.text} il thumb ഇല്ല ❌", reply_markup=slot_kb())
 
 
 @bot.message_handler(func=lambda m: m.text == "🖼 Thumb ON")
-def thumb_on(message):
-    uid = message.from_user.id
+def t_on(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
-
-    if not user_data[uid]["selected_thumb_slot"]:
-        bot.send_message(message.chat.id, "ആദ്യം ✅ Use Thumb ചെയ്ത് ഒരു slot select ചെയ്യൂ ❌", reply_markup=main_kb())
-        return
-
     user_data[uid]["thumb_mode"] = True
-    bot.send_message(message.chat.id, "Thumb Change ON ✅", reply_markup=main_kb())
+    bot.reply_to(m, "Thumb ON ✅")
 
 
 @bot.message_handler(func=lambda m: m.text == "❌ Thumb OFF")
-def thumb_off(message):
-    uid = message.from_user.id
+def t_off(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
     user_data[uid]["thumb_mode"] = False
-    bot.send_message(message.chat.id, "Thumb Change OFF ❌", reply_markup=main_kb())
+    bot.reply_to(m, "Thumb OFF ❌")
 
 
 @bot.message_handler(func=lambda m: m.text == "🔗 Arrange ON")
-def arrange_on(message):
-    uid = message.from_user.id
+def a_on(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
     user_data[uid]["arrange_mode"] = True
-    bot.send_message(message.chat.id, "Arrange Link ON ✅", reply_markup=main_kb())
+    bot.reply_to(m, "Arrange ON")
 
 
 @bot.message_handler(func=lambda m: m.text == "🚫 Arrange OFF")
-def arrange_off(message):
-    uid = message.from_user.id
+def a_off(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
     user_data[uid]["arrange_mode"] = False
-    bot.send_message(message.chat.id, "Arrange Link OFF ❌", reply_markup=main_kb())
+    bot.reply_to(m, "Arrange OFF")
 
 
 @bot.message_handler(func=lambda m: m.text == "📝 Text Edit ON")
-def text_edit_on(message):
-    uid = message.from_user.id
+def te_on(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
     user_data[uid]["text_edit_mode"] = True
-    bot.send_message(message.chat.id, "Text Edit ON ✅", reply_markup=main_kb())
+    bot.reply_to(m, "Text Edit ON 🔥")
 
 
 @bot.message_handler(func=lambda m: m.text == "❎ Text Edit OFF")
-def text_edit_off(message):
-    uid = message.from_user.id
+def te_off(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
     user_data[uid]["text_edit_mode"] = False
-    bot.send_message(message.chat.id, "Text Edit OFF ❌", reply_markup=main_kb())
+    bot.reply_to(m, "Text Edit OFF")
 
 
 @bot.message_handler(func=lambda m: m.text == "📢 Select Channel")
-def select_channel(message):
-    uid = message.from_user.id
+def select_channel(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
-    bot.send_message(message.chat.id, "Forward ചെയ്യേണ്ട channels select ചെയ്യൂ 👇", reply_markup=channel_kb())
+    bot.send_message(m.chat.id, "Select channels", reply_markup=channel_kb())
 
 
 @bot.message_handler(func=lambda m: m.text in CHANNELS.keys())
-def channel_toggle(message):
-    uid = message.from_user.id
+def toggle_channel(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
-    name = message.text
-    cid = CHANNELS[name]
 
+    cid = CHANNELS[m.text]
     if cid in user_data[uid]["selected_channels"]:
         user_data[uid]["selected_channels"].remove(cid)
-        bot.send_message(message.chat.id, f"{name} removed ❌", reply_markup=channel_kb())
+        bot.send_message(m.chat.id, f"{m.text} removed ❌", reply_markup=channel_kb())
     else:
         user_data[uid]["selected_channels"].append(cid)
-        bot.send_message(message.chat.id, f"{name} added ✅", reply_markup=channel_kb())
+        bot.send_message(m.chat.id, f"{m.text} added ✅", reply_markup=channel_kb())
 
 
 @bot.message_handler(func=lambda m: m.text == "✅ Done")
-def done_channels(message):
-    uid = message.from_user.id
+def done(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
-    bot.send_message(message.chat.id, "Channels saved ✅", reply_markup=main_kb())
+    init_user(uid)
+    bot.send_message(m.chat.id, "Channels saved ✅", reply_markup=main_kb())
 
 
 @bot.message_handler(func=lambda m: m.text == "🗑 Clear Channels")
-def clear_channels(message):
-    uid = message.from_user.id
+def clear_channels(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
-
     init_user(uid)
     user_data[uid]["selected_channels"] = []
-    bot.send_message(message.chat.id, "Channels cleared ✅", reply_markup=channel_kb())
-
-
-@bot.message_handler(func=lambda m: m.text == "👁 Current Thumb")
-def current_thumb(message):
-    uid = message.from_user.id
-    if not is_admin(uid):
-        return
-
-    init_user(uid)
-    thumb = get_selected_thumb(uid)
-    slot = user_data[uid]["selected_thumb_slot"]
-
-    if not thumb:
-        bot.send_message(message.chat.id, "Current thumb ഇല്ല ❌", reply_markup=main_kb())
-        return
-
-    bot.send_photo(message.chat.id, thumb, caption=f"Current Thumb: {slot} ✅", reply_markup=main_kb())
-
-
-@bot.message_handler(func=lambda m: m.text == "📊 Current Settings")
-def current_settings(message):
-    uid = message.from_user.id
-    if not is_admin(uid):
-        return
-
-    init_user(uid)
-
-    selected_thumb = user_data[uid]["selected_thumb_slot"] or "None ❌"
-    thumb_mode = "ON ✅" if user_data[uid]["thumb_mode"] else "OFF ❌"
-    arrange_mode = "ON ✅" if user_data[uid]["arrange_mode"] else "OFF ❌"
-    text_edit_mode = "ON ✅" if user_data[uid]["text_edit_mode"] else "OFF ❌"
-    auto_forward = "ON ✅" if user_data[uid]["auto_forward"] else "OFF ❌"
-
-    channels = selected_channel_names(uid)
-    channels_text = "\n".join(channels) if channels else "None ❌"
-
-    text = (
-        f"Selected Thumb: {selected_thumb}\n"
-        f"Thumb Mode: {thumb_mode}\n"
-        f"Arrange Mode: {arrange_mode}\n"
-        f"Text Edit Mode: {text_edit_mode}\n"
-        f"Auto Forward: {auto_forward}\n\n"
-        f"Selected Channels:\n{channels_text}"
-    )
-
-    bot.send_message(message.chat.id, text, reply_markup=main_kb())
-
-
-@bot.message_handler(func=lambda m: m.text == "🟢 Auto Forward ON")
-def auto_forward_on(message):
-    uid = message.from_user.id
-    if not is_admin(uid):
-        return
-
-    init_user(uid)
-    user_data[uid]["auto_forward"] = True
-    bot.send_message(message.chat.id, "Auto Forward ON ✅", reply_markup=main_kb())
-
-
-@bot.message_handler(func=lambda m: m.text == "🔴 Auto Forward OFF")
-def auto_forward_off(message):
-    uid = message.from_user.id
-    if not is_admin(uid):
-        return
-
-    init_user(uid)
-    user_data[uid]["auto_forward"] = False
-    bot.send_message(message.chat.id, "Auto Forward OFF ❌", reply_markup=main_kb())
+    bot.send_message(m.chat.id, "Channels cleared ✅", reply_markup=channel_kb())
 
 
 @bot.message_handler(func=lambda m: m.text == "⬅️ Back")
-def back_btn(message):
-    uid = message.from_user.id
+def back(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
+    init_user(uid)
+    bot.send_message(m.chat.id, "Main menu ✅", reply_markup=main_kb())
 
-    bot.send_message(message.chat.id, "Main menu ✅", reply_markup=main_kb())
+
+@bot.message_handler(func=lambda m: m.text == "🟢 Auto Forward ON")
+def af_on(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+    init_user(uid)
+    user_data[uid]["auto_forward"] = True
+    bot.reply_to(m, "Auto Forward ON")
+
+
+@bot.message_handler(func=lambda m: m.text == "🔴 Auto Forward OFF")
+def af_off(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+    init_user(uid)
+    user_data[uid]["auto_forward"] = False
+    bot.reply_to(m, "Auto Forward OFF")
+
+
+@bot.message_handler(func=lambda m: m.text == "📊 Current Settings")
+def current_settings(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+    init_user(uid)
+
+    text = (
+        f"Thumb Mode: {'ON ✅' if user_data[uid]['thumb_mode'] else 'OFF ❌'}\n"
+        f"Arrange Mode: {'ON ✅' if user_data[uid]['arrange_mode'] else 'OFF ❌'}\n"
+        f"Text Edit Mode: {'ON ✅' if user_data[uid]['text_edit_mode'] else 'OFF ❌'}\n"
+        f"Auto Forward: {'ON ✅' if user_data[uid]['auto_forward'] else 'OFF ❌'}\n"
+        f"Selected Thumb: {user_data[uid]['selected_thumb'] or 'None ❌'}\n"
+        f"Selected Channels: {len(user_data[uid]['selected_channels'])}"
+    )
+    bot.send_message(m.chat.id, text, reply_markup=main_kb())
 
 
 @bot.message_handler(content_types=["photo"])
-def photo_handler(message):
-    uid = message.from_user.id
+def photo(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
 
     init_user(uid)
 
-    incoming_photo = message.photo[-1].file_id
-    caption = message.caption or ""
+    photo_id = m.photo[-1].file_id
+    cap = m.caption or ""
 
-    waiting_slot = user_data[uid]["waiting_thumb_slot"]
-    if waiting_slot:
-        user_data[uid]["saved_thumbs"][waiting_slot] = incoming_photo
-        user_data[uid]["waiting_thumb_slot"] = None
-        user_data[uid]["thumb_action"] = None
-        bot.send_photo(
-            message.chat.id,
-            incoming_photo,
-            caption=f"{waiting_slot} saved ✅",
-            reply_markup=main_kb()
-        )
+    if user_data[uid]["waiting_thumb"]:
+        slot = user_data[uid]["waiting_thumb"]
+        user_data[uid]["thumbs"][slot] = photo_id
+        user_data[uid]["waiting_thumb"] = None
+        bot.send_message(m.chat.id, f"{slot} saved ✅", reply_markup=main_kb())
         return
 
-    send_photo = incoming_photo
+    send_photo = photo_id
     if user_data[uid]["thumb_mode"]:
-        selected_thumb = get_selected_thumb(uid)
-        if selected_thumb:
-            send_photo = selected_thumb
+        t = get_thumb(uid)
+        if t:
+            send_photo = t
 
-    final_caption = caption[:1024] if caption else ""
-
+    final = cap
     if user_data[uid]["text_edit_mode"]:
-        final_caption = build_text_edit_caption(caption)
+        final = text_edit(cap)
     elif user_data[uid]["arrange_mode"]:
-        final_caption = build_arranged_caption(caption)
+        final = arrange(cap)
 
-    bot.send_photo(
-        message.chat.id,
-        send_photo,
-        caption=final_caption,
-        reply_markup=main_kb()
-    )
+    bot.send_photo(m.chat.id, send_photo, caption=final, reply_markup=main_kb())
 
     if user_data[uid]["auto_forward"]:
         for ch in user_data[uid]["selected_channels"]:
             try:
-                bot.send_photo(ch, send_photo, caption=final_caption)
+                bot.send_photo(ch, send_photo, caption=final)
             except Exception as e:
                 print("Forward photo error:", e)
 
 
 @bot.message_handler(content_types=["text"])
-def text_handler(message):
-    uid = message.from_user.id
+def text(m):
+    uid = m.from_user.id
     if not is_admin(uid):
         return
 
@@ -502,50 +390,45 @@ def text_handler(message):
         "📝 Text Edit ON", "❎ Text Edit OFF",
         "📢 Select Channel",
         "🟢 Auto Forward ON", "🔴 Auto Forward OFF",
-        "👁 Current Thumb", "📊 Current Settings",
+        "📊 Current Settings",
         "Channel 1", "Channel 2", "Channel 3", "Channel 4",
         "✅ Done", "🗑 Clear Channels", "⬅️ Back",
         "Photo 1", "Photo 2", "Photo 3", "Photo 4"
     }
 
-    if message.text in ignore:
+    if m.text in ignore:
         return
 
-    final_text = message.text
+    txt = m.text
 
     if user_data[uid]["text_edit_mode"]:
-        final_text = build_text_edit_caption(message.text)
+        txt = text_edit(txt)
     elif user_data[uid]["arrange_mode"]:
-        final_text = build_arranged_caption(message.text)
+        txt = arrange(txt)
 
     if user_data[uid]["thumb_mode"]:
-        selected_thumb = get_selected_thumb(uid)
-        if selected_thumb:
-            bot.send_photo(
-                message.chat.id,
-                selected_thumb,
-                caption=final_text[:1024],
-                reply_markup=main_kb()
-            )
+        t = get_thumb(uid)
+        if t:
+            bot.send_photo(m.chat.id, t, caption=txt, reply_markup=main_kb())
 
             if user_data[uid]["auto_forward"]:
                 for ch in user_data[uid]["selected_channels"]:
                     try:
-                        bot.send_photo(ch, selected_thumb, caption=final_text[:1024])
+                        bot.send_photo(ch, t, caption=txt)
                     except Exception as e:
                         print("Forward text-photo error:", e)
             return
 
-    bot.send_message(message.chat.id, final_text[:4096], reply_markup=main_kb())
+    bot.send_message(m.chat.id, txt, reply_markup=main_kb())
 
     if user_data[uid]["auto_forward"]:
         for ch in user_data[uid]["selected_channels"]:
             try:
-                bot.send_message(ch, final_text[:4096])
+                bot.send_message(ch, txt)
             except Exception as e:
                 print("Forward text error:", e)
 
 
 print("Bot running...")
 bot.remove_webhook()
-bot.infinity_polling(skip_pending=True, none_stop=True)
+bot.infinity_polling(skip_pending=True)
