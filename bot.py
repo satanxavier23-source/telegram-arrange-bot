@@ -97,7 +97,8 @@ def is_header_like(line: str) -> bool:
     header_keywords = [
         "join", "join our", "channel", "group",
         "telegram", "whatsapp", "follow", "subscribe",
-        "latest update", "watch video", "terabox channel", "@"
+        "latest update", "watch video", "terabox channel", "@",
+        "must watch"
     ]
 
     for word in header_keywords:
@@ -105,7 +106,7 @@ def is_header_like(line: str) -> bool:
             return True
 
     emoji_count = len(re.findall(r'[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯📢📌👉]', line))
-    if emoji_count >= 3 and len(line) < 45:
+    if emoji_count >= 3 and len(line) < 50:
         return True
 
     if only_symbols_or_emoji(line):
@@ -122,29 +123,32 @@ def is_footer_like(line: str) -> bool:
     lower = line.lower()
 
     footer_keywords = [
+        # english
         "join", "join our", "join our whatsapp",
         "whatsapp", "telegram", "channel", "group",
         "follow", "follow us",
         "subscribe", "support",
         "comment", "comments",
         "react", "reaction",
-        "like", "likes", "ലൈക്", "ലൈക്ക്",
-        "share",
-        "watch", "watch now",
-        "click", "link",
-        "our channel",
-        "@"
+        "like", "likes", "share",
+        "watch", "watch now", "must watch",
+        "click", "our channel", "@",
+
+        # malayalam
+        "കൂടുതൽ", "വീഡിയോ", "വീഡിയോകൾക്കായി",
+        "ചാനൽ", "സബ്സ്ക്രൈബ്", "ഫോളോ",
+        "ലൈക്ക്", "ലൈക്കുകൾ", "ഷെയർ", "കമന്റ്",
+        "ഞങ്ങളുടെ", "നമ്മുടെ", "വന്നാൽ", "ഉഷാർ", "പരിപാടി"
     ]
 
     for word in footer_keywords:
         if word in lower:
             return True
 
-    emoji_count = len(re.findall(r'[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯😂🤣🙏👉📌📍📢]', line))
-    if emoji_count >= 3:
+    if len(re.findall(r'[🔥💥⚜️❤️😂🤣💯✨📢📌👉🥰😍😘💎⭐🎉🙏]', line)) >= 3:
         return True
 
-    if re.search(r'[_\-—=~*#]{4,}', line):
+    if re.search(r'[_\-—=~*#]{3,}', line):
         return True
 
     if only_symbols_or_emoji(line):
@@ -161,9 +165,33 @@ def clean_lines_keep_malayalam(text):
         line = normalize_line(raw)
         if not line:
             continue
+
         if is_link_line(line):
             continue
-        cleaned.append(line)
+
+        # remove numbered lines like 1 ... 2 ...
+        if re.match(r'^\d+[\).\s]', line):
+            continue
+
+        # remove english-only promo lines
+        if re.search(r'[A-Za-z]', line) and not has_malayalam(line):
+            continue
+
+        # remove symbol/emoji spam
+        if only_symbols_or_emoji(line):
+            continue
+
+        promo_words = [
+            "കൂടുതൽ", "ചാനൽ", "സബ്സ്ക്രൈബ്",
+            "ഫോളോ", "ലൈക്ക്", "ലൈക്കുകൾ",
+            "ഷെയർ", "കമന്റ്", "വന്നാൽ",
+            "ഞങ്ങളുടെ", "നമ്മുടെ", "ഉഷാർ", "പരിപാടി"
+        ]
+        if any(word in line for word in promo_words):
+            continue
+
+        if has_malayalam(line):
+            cleaned.append(line)
 
     while cleaned and is_header_like(cleaned[0]):
         cleaned.pop(0)
@@ -175,20 +203,6 @@ def clean_lines_keep_malayalam(text):
     seen = set()
 
     for line in cleaned:
-        if is_footer_like(line):
-            continue
-
-        # remove english promo lines
-        if re.search(r'[A-Za-z]', line) and not has_malayalam(line):
-            continue
-
-        # force remove join/whatsapp lines even if mixed
-        if "whatsapp" in line.lower() or "join" in line.lower():
-            continue
-
-        if not has_malayalam(line):
-            continue
-
         if line not in seen:
             final_lines.append(line)
             seen.add(line)
@@ -246,10 +260,13 @@ def smart_ai_filter(text):
         if only_symbols_or_emoji(line):
             continue
 
-        if "whatsapp" in line.lower() or "join" in line.lower():
+        if re.match(r'^\d+[\).\s]', line):
             continue
 
         if re.search(r'[A-Za-z]', line) and not has_malayalam(line):
+            continue
+
+        if any(w in line for w in ["ലൈക്ക്", "ചാനൽ", "ഫോളോ", "വന്നാൽ", "സബ്സ്ക്രൈബ്", "കൂടുതൽ"]):
             continue
 
         if has_malayalam(line):
