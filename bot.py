@@ -12,11 +12,11 @@ bot = telebot.TeleBot(BOT_TOKEN)
 ADMIN_IDS = [6630347046, 7194569468]
 
 CHANNELS = {
-    "Channel 1": "-1002674664027",
-    "Channel 2": "-1002514181198",
-    "Channel 3": "-1002427180742",
-    "Channel 4": "-1003590340901",
-    "Channel 5": "-1002852893991",
+    "Channel 1": -1002674664027,
+    "Channel 2": -1002514181198,
+    "Channel 3": -1002427180742,
+    "Channel 4": -1003590340901,
+    "Channel 5": -1002852893991,
 }
 
 THUMB_SLOTS = ["Photo 1", "Photo 2", "Photo 3", "Photo 4"]
@@ -50,40 +50,105 @@ def init_user(uid):
 # =========================
 # HELPERS
 # =========================
+def normalize_line(line: str) -> str:
+    return re.sub(r"\s+", " ", (line or "").strip())
+
+
 def extract_links(text):
-    return re.findall(r'https?://\S+', text or "")
+    return re.findall(r'https?://[^\s]+', text or "")
 
 
 def build_links(links):
     if not links:
         return ""
-    txt = []
+    out = []
     for i, link in enumerate(links, 1):
-        txt.append(f"VIDEO {i} ⤵️\n{link}")
-    return "\n\n".join(txt).strip()
+        out.append(f"VIDEO {i} ⤵️\n{link}")
+    return "\n\n".join(out).strip()
 
 
-def arrange(text):
-    links = extract_links(text)
-    if not links:
-        return (text or "").strip()[:4096]
-    return build_links(links)[:4096]
+def safe_caption(text):
+    return (text or "")[:1024]
 
 
-def is_footer_like(line: str) -> bool:
-    line = line.strip()
+def safe_text(text):
+    return (text or "")[:4096]
+
+
+def has_malayalam(text):
+    return bool(re.search(r'[\u0D00-\u0D7F]', text or ""))
+
+
+def only_symbols_or_emoji(line):
+    return bool(re.fullmatch(r'[\W_🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯😂🤣🙏👉📌📍📢•○●◇◆■□•~`|]+', line or ""))
+
+
+def is_link_line(line):
+    return bool(re.search(r'https?://', line or ""))
+
+
+def is_short_decorative(line):
+    line = normalize_line(line)
+    if not line:
+        return True
+    if len(line) <= 2:
+        return True
+    if only_symbols_or_emoji(line):
+        return True
+    return False
+
+
+def is_header_like(line: str) -> bool:
+    line = normalize_line(line)
     if not line:
         return True
 
-    emoji_count = len(re.findall(r'[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯😂🤣🙏]', line))
-    symbol_count = len(re.findall(r'[_\-—=~*]+', line))
+    lower = line.lower()
+
+    header_keywords = [
+        "join", "channel", "group", "telegram", "whatsapp",
+        "follow", "subscribe", "latest update", "watch video",
+        "terabox channel", "@"
+    ]
+
+    for word in header_keywords:
+        if word in lower:
+            return True
+
+    emoji_count = len(re.findall(r'[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯📢📌👉]', line))
+    if emoji_count >= 3 and len(line) < 45:
+        return True
+
+    if only_symbols_or_emoji(line):
+        return True
+
+    return False
+
+
+def is_footer_like(line: str) -> bool:
+    line = normalize_line(line)
+    if not line:
+        return True
+
+    lower = line.lower()
 
     footer_keywords = [
-        "ലൈക്ക്", "ലൈക്കുകൾ", "ലൈക്", "like", "likes",
-        "share", "subscribe", "support", "follow",
-        "channel", "join", "@", "comment", "comments",
-        "reaction", "react"
+        "ലൈക്ക്", "ലൈക്", "ലൈക്കുകൾ",
+        "ഷെയർ", "share",
+        "subscribe", "support", "follow",
+        "join", "channel", "group",
+        "comment", "comments", "react", "reaction",
+        "telegram", "whatsapp", "instagram", "facebook",
+        "watch", "click", "link", "@",
+        "our channel", "join our", "follow us"
     ]
+
+    for word in footer_keywords:
+        if word in lower:
+            return True
+
+    emoji_count = len(re.findall(r'[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯😂🤣🙏👉📌📍📢]', line))
+    symbol_count = len(re.findall(r'[_\-—=~*#]+', line))
 
     if emoji_count >= 4:
         return True
@@ -91,80 +156,67 @@ def is_footer_like(line: str) -> bool:
     if symbol_count >= 5:
         return True
 
-    lower_line = line.lower()
-    for word in footer_keywords:
-        if word.lower() in lower_line:
-            return True
-
-    if len(line) < 3:
+    if is_short_decorative(line):
         return True
 
     return False
 
 
-def is_header_like(line: str) -> bool:
-    line = line.strip()
-    if not line:
-        return True
-
-    lower_line = line.lower()
-
-    header_keywords = [
-        "join", "channel", "group", "whatsapp", "telegram",
-        "subscribe", "follow", "latest update", "@"
-    ]
-
-    emoji_count = len(re.findall(r'[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯]', line))
-
-    if emoji_count >= 3 and len(line) < 35:
-        return True
-
-    for word in header_keywords:
-        if word in lower_line:
-            return True
-
-    return False
-
-
-def extract_malayalam(text):
+def clean_lines_keep_malayalam(text):
     lines = (text or "").splitlines()
-    result = []
+    cleaned = []
 
-    for line in lines:
-        line = line.strip()
+    for raw in lines:
+        line = normalize_line(raw)
         if not line:
             continue
-
-        if re.search(r'https?://', line):
-            continue
-
-        if re.search(r'[\u0D00-\u0D7F]', line):
-            result.append(line)
-
-    if not result:
-        return []
-
-    # smarter header remove
-    if result and is_header_like(result[0]):
-        result = result[1:]
-
-    cleaned = []
-    for line in result:
-        if is_footer_like(line):
+        if is_link_line(line):
             continue
         cleaned.append(line)
 
-    return cleaned
+    # remove top headers
+    while cleaned and is_header_like(cleaned[0]):
+        cleaned.pop(0)
+
+    # remove bottom footers
+    while cleaned and is_footer_like(cleaned[-1]):
+        cleaned.pop()
+
+    final_lines = []
+    seen = set()
+
+    for line in cleaned:
+        if is_footer_like(line):
+            continue
+
+        if re.search(r'[A-Za-z]', line) and not has_malayalam(line):
+            continue
+
+        if not has_malayalam(line):
+            continue
+
+        if line not in seen:
+            final_lines.append(line)
+            seen.add(line)
+
+    return final_lines
+
+
+def arrange(text):
+    links = extract_links(text)
+    if not links:
+        return safe_text((text or "").strip())
+    return safe_text(build_links(links))
 
 
 def text_edit(text):
-    mal = extract_malayalam(text)
+    mal_lines = clean_lines_keep_malayalam(text)
     links = extract_links(text)
 
     parts = []
 
-    if mal:
-        parts.append("\n".join(mal).strip())
+    if mal_lines:
+        parts.append("\n".join(mal_lines).strip())
 
     if links:
         parts.append(build_links(links))
@@ -174,21 +226,21 @@ def text_edit(text):
     if not final:
         final = (text or "").strip()
 
-    return final[:4096]
+    return safe_text(final)
 
 
 def smart_ai_filter(text):
     lines = (text or "").splitlines()
     links = extract_links(text)
 
-    cleaned_lines = []
+    cleaned = []
 
-    for i, raw_line in enumerate(lines):
-        line = raw_line.strip()
+    for i, raw in enumerate(lines):
+        line = normalize_line(raw)
         if not line:
             continue
 
-        if re.search(r'https?://', line):
+        if is_link_line(line):
             continue
 
         if i == 0 and is_header_like(line):
@@ -197,27 +249,32 @@ def smart_ai_filter(text):
         if is_footer_like(line):
             continue
 
-        # pure english promo remove
-        if re.search(r'[A-Za-z]', line) and not re.search(r'[\u0D00-\u0D7F]', line):
+        if only_symbols_or_emoji(line):
             continue
 
-        # only emoji / symbols line remove
-        if re.fullmatch(r'[\W_🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯😂🤣🙏]+', line):
+        if re.search(r'[A-Za-z]', line) and not has_malayalam(line):
             continue
 
-        # keep useful Malayalam / mixed lines
-        if re.search(r'[\u0D00-\u0D7F]', line):
-            cleaned_lines.append(line)
+        if has_malayalam(line):
+            cleaned.append(line)
 
-    unique_lines = []
-    for line in cleaned_lines:
-        if line not in unique_lines:
-            unique_lines.append(line)
+    while cleaned and is_header_like(cleaned[0]):
+        cleaned.pop(0)
+
+    while cleaned and is_footer_like(cleaned[-1]):
+        cleaned.pop()
+
+    final_lines = []
+    seen = set()
+    for line in cleaned:
+        if line not in seen:
+            final_lines.append(line)
+            seen.add(line)
 
     parts = []
 
-    if unique_lines:
-        parts.append("\n".join(unique_lines).strip())
+    if final_lines:
+        parts.append("\n".join(final_lines).strip())
 
     if links:
         parts.append(build_links(links))
@@ -227,7 +284,7 @@ def smart_ai_filter(text):
     if not final:
         final = (text or "").strip()
 
-    return final[:4096]
+    return safe_text(final)
 
 
 def get_thumb(uid):
@@ -264,7 +321,7 @@ def forward_to_channels_text(uid, text):
 
     for ch in user_data[uid]["selected_channels"]:
         try:
-            bot.send_message(ch, text[:4096])
+            bot.send_message(ch, safe_text(text))
         except Exception as e:
             print("Forward text error:", e)
 
@@ -275,7 +332,7 @@ def forward_to_channels_photo(uid, photo, caption=""):
 
     for ch in user_data[uid]["selected_channels"]:
         try:
-            bot.send_photo(ch, photo, caption=(caption or "")[:1024])
+            bot.send_photo(ch, photo, caption=safe_caption(caption))
         except Exception as e:
             print("Forward photo error:", e)
 
@@ -344,7 +401,7 @@ def start(m):
 # =========================
 # THUMB SET / USE
 # =========================
-@bot.message_handler(func=lambda m: m.text == "📸 Set Thumb")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "📸 Set Thumb")
 def set_thumb(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -355,7 +412,7 @@ def set_thumb(m):
     bot.send_message(m.chat.id, "Save ചെയ്യാൻ slot select ചെയ്യൂ", reply_markup=slot_kb())
 
 
-@bot.message_handler(func=lambda m: m.text == "✅ Use Thumb")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "✅ Use Thumb")
 def use_thumb(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -366,7 +423,7 @@ def use_thumb(m):
     bot.send_message(m.chat.id, "Use ചെയ്യാൻ slot select ചെയ്യൂ", reply_markup=slot_kb())
 
 
-@bot.message_handler(func=lambda m: m.text in THUMB_SLOTS)
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text in THUMB_SLOTS)
 def thumb_slot(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -389,7 +446,7 @@ def thumb_slot(m):
             bot.send_message(m.chat.id, f"{slot} il thumb ഇല്ല ❌", reply_markup=slot_kb())
 
 
-@bot.message_handler(func=lambda m: m.text == "👁 Current Thumb")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "👁 Current Thumb")
 def current_thumb(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -414,7 +471,7 @@ def current_thumb(m):
 # =========================
 # MODES
 # =========================
-@bot.message_handler(func=lambda m: m.text == "🖼 Thumb ON")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🖼 Thumb ON")
 def thumb_on(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -430,7 +487,7 @@ def thumb_on(m):
     bot.reply_to(m, "Thumb ON ✅")
 
 
-@bot.message_handler(func=lambda m: m.text == "❌ Thumb OFF")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "❌ Thumb OFF")
 def thumb_off(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -441,7 +498,7 @@ def thumb_off(m):
     bot.reply_to(m, "Thumb OFF ❌")
 
 
-@bot.message_handler(func=lambda m: m.text == "🔗 Arrange ON")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🔗 Arrange ON")
 def arrange_on(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -454,7 +511,7 @@ def arrange_on(m):
     bot.reply_to(m, "Arrange ON ✅")
 
 
-@bot.message_handler(func=lambda m: m.text == "🚫 Arrange OFF")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🚫 Arrange OFF")
 def arrange_off(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -465,7 +522,7 @@ def arrange_off(m):
     bot.reply_to(m, "Arrange OFF ❌")
 
 
-@bot.message_handler(func=lambda m: m.text == "📝 Text Edit ON")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "📝 Text Edit ON")
 def text_edit_on(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -478,7 +535,7 @@ def text_edit_on(m):
     bot.reply_to(m, "Text Edit ON 🔥")
 
 
-@bot.message_handler(func=lambda m: m.text == "❎ Text Edit OFF")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "❎ Text Edit OFF")
 def text_edit_off(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -489,7 +546,7 @@ def text_edit_off(m):
     bot.reply_to(m, "Text Edit OFF ❌")
 
 
-@bot.message_handler(func=lambda m: m.text == "🤖 AI Filter ON")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🤖 AI Filter ON")
 def ai_filter_on(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -502,7 +559,7 @@ def ai_filter_on(m):
     bot.reply_to(m, "AI Filter ON 🤖🔥")
 
 
-@bot.message_handler(func=lambda m: m.text == "🛑 AI Filter OFF")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🛑 AI Filter OFF")
 def ai_filter_off(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -513,7 +570,7 @@ def ai_filter_off(m):
     bot.reply_to(m, "AI Filter OFF ❌")
 
 
-@bot.message_handler(func=lambda m: m.text == "🟢 Auto Forward ON")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🟢 Auto Forward ON")
 def auto_forward_on(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -524,7 +581,7 @@ def auto_forward_on(m):
     bot.reply_to(m, "Auto Forward ON ✅")
 
 
-@bot.message_handler(func=lambda m: m.text == "🔴 Auto Forward OFF")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🔴 Auto Forward OFF")
 def auto_forward_off(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -538,7 +595,7 @@ def auto_forward_off(m):
 # =========================
 # CHANNELS
 # =========================
-@bot.message_handler(func=lambda m: m.text == "📢 Select Channel")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "📢 Select Channel")
 def select_channel(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -548,7 +605,7 @@ def select_channel(m):
     bot.send_message(m.chat.id, "Channels select ചെയ്യൂ 👇", reply_markup=channel_kb())
 
 
-@bot.message_handler(func=lambda m: m.text in CHANNELS.keys())
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text in CHANNELS.keys())
 def toggle_channel(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -565,7 +622,7 @@ def toggle_channel(m):
         bot.send_message(m.chat.id, f"{m.text} added ✅", reply_markup=channel_kb())
 
 
-@bot.message_handler(func=lambda m: m.text == "✅ Done")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "✅ Done")
 def done_channels(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -574,7 +631,7 @@ def done_channels(m):
     bot.send_message(m.chat.id, "Channels saved ✅", reply_markup=main_kb())
 
 
-@bot.message_handler(func=lambda m: m.text == "🗑 Clear Channels")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🗑 Clear Channels")
 def clear_channels(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -585,7 +642,7 @@ def clear_channels(m):
     bot.send_message(m.chat.id, "Channels cleared ✅", reply_markup=channel_kb())
 
 
-@bot.message_handler(func=lambda m: m.text == "⬅️ Back")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "⬅️ Back")
 def back_btn(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -597,7 +654,7 @@ def back_btn(m):
 # =========================
 # SETTINGS
 # =========================
-@bot.message_handler(func=lambda m: m.text == "📊 Current Settings")
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "📊 Current Settings")
 def current_settings(m):
     uid = m.from_user.id
     if not is_admin(uid):
@@ -634,7 +691,6 @@ def photo_handler(m):
     photo_id = m.photo[-1].file_id
     caption = m.caption or ""
 
-    # thumb save mode
     if user_data[uid]["waiting_thumb"]:
         slot = user_data[uid]["waiting_thumb"]
         user_data[uid]["thumbs"][slot] = photo_id
@@ -645,17 +701,6 @@ def photo_handler(m):
 
     final_text = apply_processing(uid, caption)
 
-    # IMPORTANT FIX:
-    # Text Edit / AI Filter mode -> send text only, not photo caption
-    if user_data[uid]["text_edit_mode"] or user_data[uid]["ai_filter_mode"]:
-        if final_text:
-            bot.send_message(m.chat.id, final_text[:4096], reply_markup=main_kb())
-            forward_to_channels_text(uid, final_text[:4096])
-        else:
-            bot.send_message(m.chat.id, "Text ഇല്ല ❌", reply_markup=main_kb())
-        return
-
-    # Arrange mode with photo -> keep photo, arranged caption
     send_photo_id = photo_id
     if user_data[uid]["thumb_mode"]:
         thumb = get_thumb(uid)
@@ -665,10 +710,11 @@ def photo_handler(m):
     bot.send_photo(
         m.chat.id,
         send_photo_id,
-        caption=final_text[:1024] if final_text else "",
+        caption=safe_caption(final_text),
         reply_markup=main_kb()
     )
-    forward_to_channels_photo(uid, send_photo_id, final_text[:1024] if final_text else "")
+
+    forward_to_channels_photo(uid, send_photo_id, safe_caption(final_text))
 
 
 # =========================
@@ -701,22 +747,26 @@ def text_handler(m):
 
     final_text = apply_processing(uid, m.text)
 
-    # text message + thumb mode -> send as photo with caption
     if user_data[uid]["thumb_mode"]:
         thumb = get_thumb(uid)
         if thumb:
             bot.send_photo(
                 m.chat.id,
                 thumb,
-                caption=final_text[:1024] if final_text else "",
+                caption=safe_caption(final_text),
                 reply_markup=main_kb()
             )
-            forward_to_channels_photo(uid, thumb, final_text[:1024] if final_text else "")
+            forward_to_channels_photo(uid, thumb, safe_caption(final_text))
             return
 
-    bot.send_message(m.chat.id, final_text[:4096] if final_text else "Empty text ❌", reply_markup=main_kb())
+    bot.send_message(
+        m.chat.id,
+        safe_text(final_text) if final_text else "Empty text ❌",
+        reply_markup=main_kb()
+    )
+
     if final_text:
-        forward_to_channels_text(uid, final_text[:4096])
+        forward_to_channels_text(uid, safe_text(final_text))
 
 
 print("Bot running...")
