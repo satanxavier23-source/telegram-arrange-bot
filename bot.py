@@ -37,8 +37,8 @@ def init_user(uid):
             "thumb_mode": False,
             "arrange_mode": False,
             "text_edit_mode": False,
-            "ai_filter_mode": False,
             "middle_mode": False,
+            "keep_text_mode": False,
             "auto_forward": False,
             "selected_channels": [],
             "selected_thumb": None,
@@ -56,15 +56,21 @@ def normalize_line(line: str) -> str:
 
 
 def extract_links(text):
-    return re.findall(r'https?://[^\s]+', text or "")
+    return re.findall(r"https?://[^\s]+", text or "")
 
 
 def build_links(links):
     if not links:
         return ""
+
+    unique_links = []
+    for link in links:
+        if link not in unique_links:
+            unique_links.append(link)
+
     out = []
-    for i, link in enumerate(links, 1):
-        out.append(f"VIDEO {i} ⤵️\n{link}")
+    for i, link in enumerate(unique_links, 1):
+        out.append(f"Video {i}\n{link}")
     return "\n\n".join(out).strip()
 
 
@@ -77,15 +83,15 @@ def safe_text(text):
 
 
 def has_malayalam(text):
-    return bool(re.search(r'[\u0D00-\u0D7F]', text or ""))
+    return bool(re.search(r"[\u0D00-\u0D7F]", text or ""))
 
 
 def only_symbols_or_emoji(line):
-    return bool(re.fullmatch(r'[\W_🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯😂🤣🙏👉📌📍📢•○●◇◆■□~`|]+', line or ""))
+    return bool(re.fullmatch(r"[\W_🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯😂🤣🙏👉📌📍📢•○●◇◆■□~`|]+", line or ""))
 
 
 def is_link_line(line):
-    return bool(re.search(r'https?://', line or ""))
+    return bool(re.search(r"https?://", line or ""))
 
 
 def is_header_like(line: str) -> bool:
@@ -106,7 +112,7 @@ def is_header_like(line: str) -> bool:
         if word in lower:
             return True
 
-    emoji_count = len(re.findall(r'[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯📢📌👉]', line))
+    emoji_count = len(re.findall(r"[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯📢📌👉]", line))
     if emoji_count >= 3 and len(line) < 50:
         return True
 
@@ -124,7 +130,6 @@ def is_footer_like(line: str) -> bool:
     lower = line.lower()
 
     footer_keywords = [
-        # english
         "join", "join our", "join our whatsapp",
         "whatsapp", "telegram", "channel", "group",
         "follow", "follow us",
@@ -134,8 +139,6 @@ def is_footer_like(line: str) -> bool:
         "like", "likes", "share",
         "watch", "watch now", "must watch",
         "click", "our channel", "@",
-
-        # malayalam
         "കൂടുതൽ", "വീഡിയോ", "വീഡിയോകൾക്കായി",
         "ചാനൽ", "സബ്സ്ക്രൈബ്", "ഫോളോ",
         "ലൈക്ക്", "ലൈക്കുകൾ", "ഷെയർ", "കമന്റ്",
@@ -146,10 +149,10 @@ def is_footer_like(line: str) -> bool:
         if word in lower:
             return True
 
-    if len(re.findall(r'[🔥💥⚜️❤️😂🤣💯✨📢📌👉🥰😍😘💎⭐🎉🙏]', line)) >= 3:
+    if len(re.findall(r"[🔥💥⚜️❤️😂🤣💯✨📢📌👉🥰😍😘💎⭐🎉🙏]", line)) >= 3:
         return True
 
-    if re.search(r'[_\-—=~*#]{3,}', line):
+    if re.search(r"[_\-—=~*#]{3,}", line):
         return True
 
     if only_symbols_or_emoji(line):
@@ -170,10 +173,10 @@ def clean_lines_keep_malayalam(text):
         if is_link_line(line):
             continue
 
-        if re.match(r'^\d+[\).\s]', line):
+        if re.match(r"^\d+[\).\s]", line):
             continue
 
-        if re.search(r'[A-Za-z]', line) and not has_malayalam(line):
+        if re.search(r"[A-Za-z]", line) and not has_malayalam(line):
             continue
 
         if only_symbols_or_emoji(line):
@@ -217,10 +220,10 @@ def middle_text_filter(text):
         if not line:
             continue
 
-        if re.search(r'https?://', line):
+        if re.search(r"https?://", line):
             continue
 
-        if re.fullmatch(r'[\W_🔥💥⚜️❤️😂🤣💯✨📢📌👉✅🥰😍😘💎⭐🎉🙏•○●◇◆■□~`|_]+', line):
+        if re.fullmatch(r"[\W_🔥💥⚜️❤️😂🤣💯✨📢📌👉✅🥰😍😘💎⭐🎉🙏•○●◇◆■□~`|_]+", line):
             continue
 
         if any(w in line for w in [
@@ -229,7 +232,7 @@ def middle_text_filter(text):
         ]):
             continue
 
-        if re.search(r'[\u0D00-\u0D7F]', line):
+        if re.search(r"[\u0D00-\u0D7F]", line):
             result.append(line)
 
     if len(result) >= 1:
@@ -265,68 +268,77 @@ def text_edit(text):
     return safe_text(final)
 
 
-def smart_ai_filter(text):
-    lines = (text or "").splitlines()
-    links = extract_links(text)
+def keep_text_and_links(text):
+    if not text:
+        return ""
 
-    cleaned = []
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-    for i, raw in enumerate(lines):
-        line = normalize_line(raw)
-        if not line:
-            continue
+    bracket_text = None
+    for line in lines:
+        match = re.search(r"\[(.*?)\]", line)
+        if match:
+            bracket_text = f"[{match.group(1).strip()}]"
+            break
 
-        if is_link_line(line):
-            continue
+    links = []
+    for line in lines:
+        found = re.findall(r"https?://[^\s]+", line)
+        for url in found:
+            if url not in links:
+                links.append(url)
 
-        if i == 0 and is_header_like(line):
-            continue
+    main_text_lines = []
+    if not bracket_text:
+        ignore_patterns = [
+            r"join",
+            r"join our",
+            r"channel",
+            r"terabox channel",
+            r"whatsapp channel",
+            r"follow",
+            r"subscribe",
+            r"watch video",
+            r"video\s*\d+",
+            r"^https?://",
+            r"^\.$",
+            r"^🆔$",
+            r"rasikan bro",
+            r"കൂടുതൽ വീഡിയോകൾക്കായി",
+            r"സബ്സ്ക്രൈബ്",
+            r"ചാനൽ",
+        ]
 
-        if is_footer_like(line):
-            continue
+        for line in lines:
+            low = line.lower()
 
-        if only_symbols_or_emoji(line):
-            continue
+            if re.search(r"https?://", line):
+                continue
 
-        if re.match(r'^\d+[\).\s]', line):
-            continue
+            if re.search(r"\[.*?\]", line):
+                continue
 
-        if re.search(r'[A-Za-z]', line) and not has_malayalam(line):
-            continue
+            if any(re.search(p, low) for p in ignore_patterns):
+                continue
 
-        if any(w in line for w in ["ലൈക്ക്", "ചാനൽ", "ഫോളോ", "വന്നാൽ", "സബ്സ്ക്രൈബ്", "കൂടുതൽ"]):
-            continue
+            if only_symbols_or_emoji(line):
+                continue
 
-        if has_malayalam(line):
-            cleaned.append(line)
+            main_text_lines.append(line)
 
-    while cleaned and is_header_like(cleaned[0]):
-        cleaned.pop(0)
+    main_text = " ".join(main_text_lines).strip()
 
-    while cleaned and is_footer_like(cleaned[-1]):
-        cleaned.pop()
+    result = []
 
-    final_lines = []
-    seen = set()
-    for line in cleaned:
-        if line not in seen:
-            final_lines.append(line)
-            seen.add(line)
+    if bracket_text:
+        result.append(bracket_text)
+    elif main_text:
+        result.append(main_text)
 
-    parts = []
+    for i, link in enumerate(links, start=1):
+        result.append(f"\nVideo {i}\n{link}")
 
-    if final_lines:
-        parts.append("\n".join(final_lines).strip())
-
-    if links:
-        parts.append(build_links(links))
-
-    final = "\n\n".join([p for p in parts if p]).strip()
-
-    if not final:
-        final = (text or "").strip()
-
-    return safe_text(final)
+    return safe_text("\n".join(result).strip())
 
 
 def get_thumb(uid):
@@ -347,6 +359,9 @@ def selected_channel_names(uid):
 def apply_processing(uid, text):
     text = text or ""
 
+    if user_data[uid]["keep_text_mode"]:
+        return keep_text_and_links(text)
+
     if user_data[uid]["middle_mode"]:
         mal = middle_text_filter(text)
         links = extract_links(text)
@@ -361,9 +376,7 @@ def apply_processing(uid, text):
 
         return "\n\n".join(parts).strip()[:4096]
 
-    if user_data[uid]["ai_filter_mode"]:
-        return smart_ai_filter(text)
-    elif user_data[uid]["text_edit_mode"]:
+    if user_data[uid]["text_edit_mode"]:
         return text_edit(text)
     elif user_data[uid]["arrange_mode"]:
         return arrange(text)
@@ -401,8 +414,8 @@ def main_kb():
     kb.row("📸 Set Thumb", "✅ Use Thumb")
     kb.row("🖼 Thumb ON", "❌ Thumb OFF")
     kb.row("🔗 Arrange ON", "🚫 Arrange OFF")
+    kb.row("🧲 Keep Text ON", "❌ Keep Text OFF")
     kb.row("📝 Text Edit ON", "❎ Text Edit OFF")
-    kb.row("🤖 AI Filter ON", "🛑 AI Filter OFF")
     kb.row("🎯 Middle ON", "🛑 Middle OFF")
     kb.row("📢 Select Channel")
     kb.row("🟢 Auto Forward ON", "🔴 Auto Forward OFF")
@@ -441,11 +454,11 @@ def start(m):
     init_user(uid)
     bot.send_message(
         m.chat.id,
-        "🔥 SMART AI FILTER BOT READY ✅\n\n"
+        "🔥 SMART FILTER BOT READY ✅\n\n"
         "• Thumb Change\n"
         "• Arrange Link\n"
+        "• Keep Text + Links\n"
         "• Text Edit\n"
-        "• AI Smart Filter\n"
         "• Middle Text Mode\n"
         "• Auto Forward\n"
         "• Channel 1 to Channel 5\n\n"
@@ -563,8 +576,8 @@ def arrange_on(m):
     init_user(uid)
     user_data[uid]["arrange_mode"] = True
     user_data[uid]["text_edit_mode"] = False
-    user_data[uid]["ai_filter_mode"] = False
     user_data[uid]["middle_mode"] = False
+    user_data[uid]["keep_text_mode"] = False
     bot.reply_to(m, "Arrange ON ✅")
 
 
@@ -579,6 +592,31 @@ def arrange_off(m):
     bot.reply_to(m, "Arrange OFF ❌")
 
 
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🧲 Keep Text ON")
+def keep_text_on(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+
+    init_user(uid)
+    user_data[uid]["keep_text_mode"] = True
+    user_data[uid]["arrange_mode"] = False
+    user_data[uid]["text_edit_mode"] = False
+    user_data[uid]["middle_mode"] = False
+    bot.reply_to(m, "Keep Text Mode ON ✅")
+
+
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "❌ Keep Text OFF")
+def keep_text_off(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+
+    init_user(uid)
+    user_data[uid]["keep_text_mode"] = False
+    bot.reply_to(m, "Keep Text Mode OFF ❌")
+
+
 @bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "📝 Text Edit ON")
 def text_edit_on(m):
     uid = m.from_user.id
@@ -587,9 +625,9 @@ def text_edit_on(m):
 
     init_user(uid)
     user_data[uid]["text_edit_mode"] = True
-    user_data[uid]["ai_filter_mode"] = False
     user_data[uid]["arrange_mode"] = False
     user_data[uid]["middle_mode"] = False
+    user_data[uid]["keep_text_mode"] = False
     bot.reply_to(m, "Text Edit ON 🔥")
 
 
@@ -604,31 +642,6 @@ def text_edit_off(m):
     bot.reply_to(m, "Text Edit OFF ❌")
 
 
-@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🤖 AI Filter ON")
-def ai_filter_on(m):
-    uid = m.from_user.id
-    if not is_admin(uid):
-        return
-
-    init_user(uid)
-    user_data[uid]["ai_filter_mode"] = True
-    user_data[uid]["text_edit_mode"] = False
-    user_data[uid]["arrange_mode"] = False
-    user_data[uid]["middle_mode"] = False
-    bot.reply_to(m, "AI Filter ON 🤖🔥")
-
-
-@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🛑 AI Filter OFF")
-def ai_filter_off(m):
-    uid = m.from_user.id
-    if not is_admin(uid):
-        return
-
-    init_user(uid)
-    user_data[uid]["ai_filter_mode"] = False
-    bot.reply_to(m, "AI Filter OFF ❌")
-
-
 @bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🎯 Middle ON")
 def middle_on(m):
     uid = m.from_user.id
@@ -637,9 +650,9 @@ def middle_on(m):
 
     init_user(uid)
     user_data[uid]["middle_mode"] = True
-    user_data[uid]["ai_filter_mode"] = False
     user_data[uid]["text_edit_mode"] = False
     user_data[uid]["arrange_mode"] = False
+    user_data[uid]["keep_text_mode"] = False
     bot.reply_to(m, "Middle Mode ON 🎯")
 
 
@@ -752,8 +765,8 @@ def current_settings(m):
     text = (
         f"Thumb Mode: {'ON ✅' if user_data[uid]['thumb_mode'] else 'OFF ❌'}\n"
         f"Arrange Mode: {'ON ✅' if user_data[uid]['arrange_mode'] else 'OFF ❌'}\n"
+        f"Keep Text Mode: {'ON ✅' if user_data[uid]['keep_text_mode'] else 'OFF ❌'}\n"
         f"Text Edit Mode: {'ON ✅' if user_data[uid]['text_edit_mode'] else 'OFF ❌'}\n"
-        f"AI Filter Mode: {'ON ✅' if user_data[uid]['ai_filter_mode'] else 'OFF ❌'}\n"
         f"Middle Mode: {'ON ✅' if user_data[uid]['middle_mode'] else 'OFF ❌'}\n"
         f"Auto Forward: {'ON ✅' if user_data[uid]['auto_forward'] else 'OFF ❌'}\n"
         f"Selected Thumb: {user_data[uid]['selected_thumb'] or 'None ❌'}\n\n"
@@ -817,8 +830,8 @@ def text_handler(m):
         "📸 Set Thumb", "✅ Use Thumb",
         "🖼 Thumb ON", "❌ Thumb OFF",
         "🔗 Arrange ON", "🚫 Arrange OFF",
+        "🧲 Keep Text ON", "❌ Keep Text OFF",
         "📝 Text Edit ON", "❎ Text Edit OFF",
-        "🤖 AI Filter ON", "🛑 AI Filter OFF",
         "🎯 Middle ON", "🛑 Middle OFF",
         "📢 Select Channel",
         "🟢 Auto Forward ON", "🔴 Auto Forward OFF",
