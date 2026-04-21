@@ -40,6 +40,8 @@ def init_user(uid):
             "middle_mode": False,
             "keep_text_mode": False,
             "auto_forward": False,
+            "remove_header_mode": False,
+            "remove_footer_mode": False,
             "selected_channels": [],
             "selected_thumb": None,
             "waiting_thumb": None,
@@ -105,7 +107,7 @@ def is_header_like(line: str) -> bool:
         "join", "join our", "channel", "group",
         "telegram", "whatsapp", "follow", "subscribe",
         "latest update", "watch video", "terabox channel", "@",
-        "must watch"
+        "must watch", "rasikan bro", "join our terabox channel"
     ]
 
     for word in header_keywords:
@@ -113,7 +115,7 @@ def is_header_like(line: str) -> bool:
             return True
 
     emoji_count = len(re.findall(r"[🔥💥⚜️❤️✅🥰😍😘💎✨⭐🎉💯📢📌👉]", line))
-    if emoji_count >= 3 and len(line) < 50:
+    if emoji_count >= 3 and len(line) < 60:
         return True
 
     if only_symbols_or_emoji(line):
@@ -139,6 +141,7 @@ def is_footer_like(line: str) -> bool:
         "like", "likes", "share",
         "watch", "watch now", "must watch",
         "click", "our channel", "@",
+        "terabox channel", "join our terabox channel",
         "കൂടുതൽ", "വീഡിയോ", "വീഡിയോകൾക്കായി",
         "ചാനൽ", "സബ്സ്ക്രൈബ്", "ഫോളോ",
         "ലൈക്ക്", "ലൈക്കുകൾ", "ഷെയർ", "കമന്റ്",
@@ -159,6 +162,24 @@ def is_footer_like(line: str) -> bool:
         return True
 
     return False
+
+
+def remove_header_footer_lines(uid, text):
+    lines = (text or "").splitlines()
+    cleaned = [line.rstrip() for line in lines if line.strip()]
+
+    if not cleaned:
+        return ""
+
+    if user_data[uid]["remove_header_mode"]:
+        while cleaned and is_header_like(cleaned[0]):
+            cleaned.pop(0)
+
+    if user_data[uid]["remove_footer_mode"]:
+        while cleaned and is_footer_like(cleaned[-1]):
+            cleaned.pop()
+
+    return "\n".join(cleaned).strip()
 
 
 def clean_lines_keep_malayalam(text):
@@ -194,11 +215,13 @@ def clean_lines_keep_malayalam(text):
         if has_malayalam(line):
             cleaned.append(line)
 
-    while cleaned and is_header_like(cleaned[0]):
-        cleaned.pop(0)
+    if user_data.get(_CURRENT_UID, {}).get("remove_header_mode", False):
+        while cleaned and is_header_like(cleaned[0]):
+            cleaned.pop(0)
 
-    while cleaned and is_footer_like(cleaned[-1]):
-        cleaned.pop()
+    if user_data.get(_CURRENT_UID, {}).get("remove_footer_mode", False):
+        while cleaned and is_footer_like(cleaned[-1]):
+            cleaned.pop()
 
     final_lines = []
     seen = set()
@@ -273,6 +296,14 @@ def keep_text_and_links(text):
         return ""
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    if user_data.get(_CURRENT_UID, {}).get("remove_header_mode", False):
+        while lines and is_header_like(lines[0]):
+            lines.pop(0)
+
+    if user_data.get(_CURRENT_UID, {}).get("remove_footer_mode", False):
+        while lines and is_footer_like(lines[-1]):
+            lines.pop()
 
     bracket_text = None
     for line in lines:
@@ -356,8 +387,15 @@ def selected_channel_names(uid):
     return names
 
 
+_CURRENT_UID = None
+
+
 def apply_processing(uid, text):
+    global _CURRENT_UID
+    _CURRENT_UID = uid
+
     text = text or ""
+    text = remove_header_footer_lines(uid, text)
 
     if user_data[uid]["keep_text_mode"]:
         return keep_text_and_links(text)
@@ -417,6 +455,8 @@ def main_kb():
     kb.row("🧲 Keep Text ON", "❌ Keep Text OFF")
     kb.row("📝 Text Edit ON", "❎ Text Edit OFF")
     kb.row("🎯 Middle ON", "🛑 Middle OFF")
+    kb.row("🧹 Header Remove ON", "🚫 Header Remove OFF")
+    kb.row("✂️ Footer Remove ON", "❌ Footer Remove OFF")
     kb.row("📢 Select Channel")
     kb.row("🟢 Auto Forward ON", "🔴 Auto Forward OFF")
     kb.row("👁 Current Thumb", "📊 Current Settings")
@@ -460,6 +500,8 @@ def start(m):
         "• Keep Text + Links\n"
         "• Text Edit\n"
         "• Middle Text Mode\n"
+        "• Header Remove\n"
+        "• Footer Remove\n"
         "• Auto Forward\n"
         "• Channel 1 to Channel 5\n\n"
         "Buttons use ചെയ്യൂ 👇",
@@ -667,6 +709,50 @@ def middle_off(m):
     bot.reply_to(m, "Middle Mode OFF ❌")
 
 
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🧹 Header Remove ON")
+def header_remove_on(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+
+    init_user(uid)
+    user_data[uid]["remove_header_mode"] = True
+    bot.reply_to(m, "Header Remove ON ✅")
+
+
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🚫 Header Remove OFF")
+def header_remove_off(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+
+    init_user(uid)
+    user_data[uid]["remove_header_mode"] = False
+    bot.reply_to(m, "Header Remove OFF ❌")
+
+
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "✂️ Footer Remove ON")
+def footer_remove_on(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+
+    init_user(uid)
+    user_data[uid]["remove_footer_mode"] = True
+    bot.reply_to(m, "Footer Remove ON ✅")
+
+
+@bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "❌ Footer Remove OFF")
+def footer_remove_off(m):
+    uid = m.from_user.id
+    if not is_admin(uid):
+        return
+
+    init_user(uid)
+    user_data[uid]["remove_footer_mode"] = False
+    bot.reply_to(m, "Footer Remove OFF ❌")
+
+
 @bot.message_handler(func=lambda m: m.content_type == "text" and m.text == "🟢 Auto Forward ON")
 def auto_forward_on(m):
     uid = m.from_user.id
@@ -768,6 +854,8 @@ def current_settings(m):
         f"Keep Text Mode: {'ON ✅' if user_data[uid]['keep_text_mode'] else 'OFF ❌'}\n"
         f"Text Edit Mode: {'ON ✅' if user_data[uid]['text_edit_mode'] else 'OFF ❌'}\n"
         f"Middle Mode: {'ON ✅' if user_data[uid]['middle_mode'] else 'OFF ❌'}\n"
+        f"Header Remove: {'ON ✅' if user_data[uid]['remove_header_mode'] else 'OFF ❌'}\n"
+        f"Footer Remove: {'ON ✅' if user_data[uid]['remove_footer_mode'] else 'OFF ❌'}\n"
         f"Auto Forward: {'ON ✅' if user_data[uid]['auto_forward'] else 'OFF ❌'}\n"
         f"Selected Thumb: {user_data[uid]['selected_thumb'] or 'None ❌'}\n\n"
         f"Selected Channels:\n{channel_text}"
@@ -833,6 +921,8 @@ def text_handler(m):
         "🧲 Keep Text ON", "❌ Keep Text OFF",
         "📝 Text Edit ON", "❎ Text Edit OFF",
         "🎯 Middle ON", "🛑 Middle OFF",
+        "🧹 Header Remove ON", "🚫 Header Remove OFF",
+        "✂️ Footer Remove ON", "❌ Footer Remove OFF",
         "📢 Select Channel",
         "🟢 Auto Forward ON", "🔴 Auto Forward OFF",
         "👁 Current Thumb", "📊 Current Settings",
