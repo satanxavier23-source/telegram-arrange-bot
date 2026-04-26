@@ -173,12 +173,20 @@ def only_symbols_or_emoji(line):
 
 def build_links(links):
     links = unique_keep_order(links)
+
+    if not links:
+        return ""
+
+    header = "FULL VIDEO 🌝🌸\n\n" + ("‎ " * 45) + "\n\n"
+
+    if len(links) == 1:
+        return header + links[0]
+
     result = []
-
     for i, link in enumerate(links, 1):
-        result.append(f"Video {i} 👇\n\n{link}")
+        result.append(f"VIDEO {i}\n\n{link}")
 
-    return "\n\n".join(result).strip()
+    return header + "\n\n".join(result).strip()
 
 
 def clean_malayalam_text(text):
@@ -422,12 +430,12 @@ def start(m):
     send_message_safe(
         m.chat.id,
         "🔥 CLEAN VIP BOT READY ✅\n\n"
-        "Text Edit Format:\n"
-        "Caption\n\n"
-        "Video 1 👇\n\n"
-        "Link\n\n"
-        "Video 2 👇\n\n"
-        "Link",
+        "Link Format:\n"
+        "FULL VIDEO 🌝🌸\n\n"
+        "VIDEO 1\n\n"
+        "link\n\n"
+        "VIDEO 2\n\n"
+        "link",
         reply_markup=main_kb()
     )
 
