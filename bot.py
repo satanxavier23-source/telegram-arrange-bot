@@ -173,14 +173,9 @@ def build_links(links):
     result = []
 
     for i, link in enumerate(links, 1):
-        result.append(f"Video {i}\n\n{link}")
+        result.append(f"Video {i}\n{link}")
 
     return "\n\n".join(result).strip()
-
-
-def dedupe_text_lines(text):
-    lines = [normalize_line(x) for x in (text or "").splitlines() if normalize_line(x)]
-    return "\n".join(unique_keep_order(lines)).strip()
 
 
 def clean_malayalam_text(text):
@@ -229,31 +224,14 @@ def middle_text_filter(text):
     return mal_lines
 
 
-def apply_processing(uid, text):
-    text = text or ""
+def text_edit(uid, text):
+    mal_lines = clean_malayalam_text(text)
     links = extract_links(text)
-
-    # ✅ Arrange ON: links മാത്രം Video 1 format
-    if user_data[uid].get("arrange_mode"):
-        if links:
-            return safe_text(build_links(links))
-        return safe_text(text.strip())
-
-    # ✅ All edit modes OFF: original text/caption തന്നെ
-    if not user_data[uid]["text_edit_mode"] and not user_data[uid]["middle_mode"]:
-        return safe_text(text.strip())
 
     parts = []
 
-    if user_data[uid]["middle_mode"]:
-        mal = middle_text_filter(text)
-        if mal:
-            parts.append("\n".join(mal))
-
-    elif user_data[uid]["text_edit_mode"]:
-        mal = clean_malayalam_text(text)
-        if mal:
-            parts.append("\n".join(mal))
+    if mal_lines:
+        parts.append("\n".join(mal_lines).strip())
 
     if links:
         parts.append(build_links(links))
@@ -261,9 +239,36 @@ def apply_processing(uid, text):
     final = "\n\n".join(parts).strip()
 
     if not final:
-        final = text.strip()
+        final = (text or "").strip()
 
-    return safe_text(dedupe_text_lines(final))
+    return safe_text(final)
+
+
+def apply_processing(uid, text):
+    text = text or ""
+    links = extract_links(text)
+
+    if user_data[uid].get("arrange_mode"):
+        if links:
+            return safe_text(build_links(links))
+        return safe_text(text.strip())
+
+    if user_data[uid]["text_edit_mode"]:
+        return text_edit(uid, text)
+
+    if user_data[uid]["middle_mode"]:
+        mal = middle_text_filter(text)
+
+        parts = []
+        if mal:
+            parts.append("\n".join(mal))
+        if links:
+            parts.append(build_links(links))
+
+        final = "\n\n".join(parts).strip()
+        return safe_text(final if final else text.strip())
+
+    return safe_text(text.strip())
 
 
 def get_thumb(uid):
@@ -414,17 +419,16 @@ def start(m):
     send_message_safe(
         m.chat.id,
         "🔥 CLEAN VIP BOT READY ✅\n\n"
-        "✅ Arrange Button Added\n"
-        "✅ Fixed Link Format:\n"
-        "Video 1\n\n"
+        "✅ Arrange Mode\n"
+        "✅ Text Edit Mode\n"
+        "✅ Middle Mode\n"
+        "✅ Thumb Mode\n"
+        "✅ Auto Forward\n\n"
+        "Link format:\n"
+        "Video 1\n"
         "link\n\n"
-        "Video 2\n\n"
-        "link\n\n"
-        "Removed:\n"
-        "❌ Link Style Button\n"
-        "❌ Header/Footer Button\n"
-        "❌ Keep Text Button\n"
-        "❌ Caption ON/OFF Button",
+        "Video 2\n"
+        "link",
         reply_markup=main_kb()
     )
 
