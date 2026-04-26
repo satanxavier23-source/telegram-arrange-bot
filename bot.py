@@ -174,16 +174,28 @@ def only_symbols_or_emoji(line):
 # Arrange mode style
 def build_links(links):
     links = unique_keep_order(links)
-
     if not links:
         return ""
 
-    result = ["FULL VIDEO"]
+    result = ["FULL VIDEO 🌝🌸"]
 
     for i, link in enumerate(links, 1):
-        result.append(f"VIDEO {i}\n\n{link}")
+        result.append(f"VIDEO {i}\n{link}")
 
     return "\n\n".join(result).strip()
+
+
+def build_links_simple(links):
+    links = unique_keep_order(links)
+    if not links:
+        return ""
+
+    result = []
+
+    for i, link in enumerate(links, 1):
+        result.append(f"VIDEO {i}\n{link}")
+
+    return "\n\n".join(result).strip()    result = ["FULL VIDEO 🌝🌸"    for i, link in enumerate(links, 1        result.append(f"VIDEO {i}\n\n{link}"    return "\n\n".join(result
 
 
 # Text Edit / Middle mode style
